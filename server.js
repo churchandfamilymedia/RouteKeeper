@@ -162,7 +162,7 @@ const authorize = (roles = []) => {
  * Serves login.html when the root URL is accessed.
  */
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 
