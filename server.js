@@ -48,7 +48,10 @@ const transporter = nodemailer.createTransport({
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    }
+    },
+    // Add a connection timeout to prevent hanging
+    connectionTimeout: 10000, // 10 seconds
+    socketTimeout: 10000 // 10 seconds
 });
 
 
@@ -277,8 +280,8 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
         const invite = new Invite({ email });
         await invite.save();
 
-        // In a production environment, use your actual domain
-        const signUpLink = `http://localhost:3000/signup.html?token=${invite.token}`;
+        // FIX: Use the BASE_URL from environment variables for the link
+        const signUpLink = `${process.env.BASE_URL}/signup.html?token=${invite.token}`;
 
         // Send the email
         await transporter.sendMail({
@@ -396,8 +399,8 @@ app.post('/api/forgot-password', async (req, res) => {
             { $set: { passwordResetToken: resetToken, passwordResetExpires: tokenExpiry } }
         );
 
-        // IMPORTANT: Replace 'http://localhost:3000' with your actual domain in production
-        const resetURL = `http://localhost:3000/reset-password.html?token=${resetToken}`;
+        // Use the BASE_URL from environment variables for the link
+        const resetURL = `${process.env.BASE_URL}/reset-password.html?token=${resetToken}`;
 
         await transporter.sendMail({
             to: user.email,
