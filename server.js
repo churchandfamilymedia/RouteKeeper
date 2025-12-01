@@ -18,6 +18,10 @@ require('dotenv').config(); // Load environment variables from .env file
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust the first proxy in front of the app. This is required for express-rate-limit
+// to work correctly when hosted on a platform like Render.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
