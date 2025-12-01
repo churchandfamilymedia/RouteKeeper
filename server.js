@@ -18,6 +18,10 @@ require('dotenv').config(); // Load environment variables from .env file
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust the first proxy in front of the app. This is required for express-rate-limit
+// to work correctly when hosted on a platform like Render.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -40,15 +44,11 @@ mongoose.connect(MONGO_URI)
 // Nodemailer Transporter Setup
 // This uses the credentials from your .env file
 const transporter = nodemailer.createTransport({
-    host: 'smtp.sendgrid.net',
-    port: 587,
-    secure: false, // Use STARTTLS
+    service: 'gmail',
     auth: {
-        user: 'apikey', // This is the literal string 'apikey' for SendGrid
+        user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    },
-    connectionTimeout: 10000, // 10 seconds
-    socketTimeout: 10000 // 10 seconds
+    }
 });
 
 
@@ -277,8 +277,8 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
         const invite = new Invite({ email });
         await invite.save();
 
-        // In a production environment, use your actual domain
-        const signUpLink = `http://localhost:3000/signup.html?token=${invite.token}`;
+        // Use the BASE_URL from environment variables for the link
+        const signUpLink = `${process.env.BASE_URL}/signup.html?token=${invite.token}`;
 
         // Send the email
         await transporter.sendMail({
@@ -396,8 +396,8 @@ app.post('/api/forgot-password', async (req, res) => {
             { $set: { passwordResetToken: resetToken, passwordResetExpires: tokenExpiry } }
         );
 
-        // IMPORTANT: Replace 'http://localhost:3000' with your actual domain in production
-        const resetURL = `http://localhost:3000/reset-password.html?token=${resetToken}`;
+        // Use the BASE_URL from environment variables for the link
+        const resetURL = `${process.env.BASE_URL}/reset-password.html?token=${resetToken}`;
 
         await transporter.sendMail({
             to: user.email,
