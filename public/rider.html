@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteKeeper - Family Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; } 
+        .container { max-width: 900px; } /* Standardized width for all containers */
+        .list-group-item {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        /* NEW STYLES for Pickup Status */
+        .pickup-status {
+            display: flex;
+            align-items: center;
+            color: #198754; /* Success Green */
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+        .pickup-icon {
+            margin-right: 5px;
+            font-size: 1.2rem;
+        }
+
+        /* Custom Darker Yellow for Accessibility */
+        .text-warning {
+            color: #b38600 !important; /* Darker gold color */
+        }
+        .btn-outline-warning {
+            color: #b38600;
+            border-color: #b38600;
+        }
+        .btn-outline-warning:hover {
+            color: #fff;
+            background-color: #b38600;
+            border-color: #b38600;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container-fluid container">
+        <span class="navbar-brand mb-0 h1">RouteKeeper</span>
+        <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- Broadcast Announcements Section -->
+    <div id="broadcast-container" class="mb-4">
+        <!-- Broadcasts will be dynamically injected here -->
+    </div>
+
+    <div class="card shadow-sm p-4 mb-4">
+        <h3 class="mb-1" id="parentNameDisplay">Loading Family...</h3>
+        <p class="text-muted mb-2" id="addressDisplay">
+            <span id="addressText"></span>
+            <a href="#" class="ms-2" data-bs-toggle="modal" data-bs-target="#permanentAddressModal" style="font-size: 0.8rem;">(Change)</a>
+        </p>
+
+        <!-- Temporary Address Display (Initially Hidden) -->
+        <div id="temporaryAddressDisplay" class="mt-3 border-top pt-3 d-none">
+            <h6 class="text-warning">Temporary Address for this Sunday:</h6>
+            <p class="mb-1"><strong>Pickup:</strong> <span id="tempPickupDisplay"></span></p>
+            <p id="tempDropoffSection" class="mb-1 d-none"><strong>Dropoff:</strong> <span id="tempDropoffDisplay"></span></p>
+            <p id="tempInstructionsSection" class="mb-0 d-none"><strong>Instructions:</strong> <span id="tempInstructionsDisplay"></span></p>
+        </div>
+        
+        <div class="mt-3 border-top pt-3">
+            <h5 class="text-secondary mb-0" id="dateDisplay">Loading Date...</h5>
+        </div>
+        <div class="d-grid gap-2 mt-3">
+             <button id="temporaryAddressBtn" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#temporaryAddressModal">
+                Set Temporary Pickup for this Sunday
+             </button>
+        </div>
+    </div>
+    
+    <div id="loading" class="text-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <ul class="list-group" id="studentList">
+        </ul>
+
+    <!-- Messaging Section -->
+    <div class="card shadow-sm mt-5">
+        <div class="card-header d-flex align-items-center">
+            <i class="bi bi-chat-dots-fill fs-5 me-2"></i>
+            <h5 class="mb-0">Conversation with Secretary</h5>
+        </div>
+        <div class="card-body" id="message-container" style="max-height: 300px; overflow-y: auto;">
+            <p class="text-muted">Loading messages...</p>
+        </div>
+        <div class="card-footer">
+            <form id="sendMessageForm">
+                <div class="input-group">
+                    <input type="text" id="message-input" class="form-control" placeholder="Send a message to the secretary..." required>
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-send-fill"></i> Send
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Permanent Address Modal -->
+    <div class="modal fade" id="permanentAddressModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Change Permanent Address</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">This will permanently update your pickup address for all future rides.</p>
+                    <form id="permanentAddressForm">
+                        <div class="mb-3">
+                            <label for="newPermanentAddress" class="form-label">New Address</label>
+                            <input type="text" class="form-control" id="newPermanentAddress" required>
+                        </div>
+                        <div id="permanentAddressStatus" class="form-text"></div>
+                        <button type="submit" class="btn btn-primary w-100">Save New Address</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Temporary Address Modal -->
+    <div class="modal fade" id="temporaryAddressModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Temporary Pickup/Dropoff Location</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Use this to set a one-time pickup and/or dropoff location for the upcoming Sunday only.</p>
+                    <form id="temporaryAddressForm">
+                        <div class="mb-3">
+                            <label for="newTemporaryPickupAddress" class="form-label">Temporary Pickup Address</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="newTemporaryPickupAddress" required>
+                                <button type="button" class="btn btn-outline-secondary" id="useHomePickupAddressBtn">Use Home Address</button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newTemporaryDropoffAddress" class="form-label">Temporary Dropoff Address (Optional)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="newTemporaryDropoffAddress">
+                                <button type="button" class="btn btn-outline-secondary" id="useHomeDropoffAddressBtn">Use Home Address</button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="additionalInstructions" class="form-label">Additional Instructions (Optional)</label>
+                            <textarea class="form-control" id="additionalInstructions" rows="3" placeholder="e.g., 'Please pick up from the side door', 'Drop off at neighbor's house'"></textarea>
+                        </div>
+                        <div id="temporaryAddressHistory" class="mb-3">
+                            <!-- History buttons will be injected here -->
+                        </div>
+                        <div id="temporaryAddressStatus" class="form-text"></div>
+                        <button type="submit" class="btn btn-primary w-100">Set for this Sunday</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<footer class="text-center text-muted py-4">
+    <small>&copy; Church and Family Media</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ---------------------------------------------------------
+    // 1. UTILITY FUNCTIONS & SECURITY CHECK
+    // ---------------------------------------------------------
+
+    // Check for user login and role and token
+    const userId = localStorage.getItem('userId');
+    const role = localStorage.getItem('role');
+    const token = localStorage.getItem('token');
+
+    if (!token || !userId || role !== 'rider') {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
+
+    // Centralized fetch function to handle authentication and errors
+    async function fetchWithAuth(url, options = {}) {
+        const headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`
+        };
+        if (options.body && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        const response = await fetch(url, { ...options, headers });
+        if (response.status === 401 || response.status === 403) {
+            logout(); // Token is invalid or expired
+        }
+        return response;
+    }
+
+    // Function to calculate Next Sunday
+    function getNextSunday() {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? 0 : 7); 
+        const nextSundayDate = new Date(d.setDate(diff));
+        nextSundayDate.setHours(0, 0, 0, 0);
+        return nextSundayDate;
+    }
+
+    const nextSunday = getNextSunday();
+
+    // Display the date (This line caused the previous error, now the ID is guaranteed to exist)
+    const dateOptions = { weekday: 'long', month: 'short', day: 'numeric' };
+    document.getElementById('dateDisplay').innerText = nextSunday.toLocaleDateString('en-US', dateOptions);
+
+
+    // ---------------------------------------------------------
+    // 2. MAIN DATA LOADER
+    // ---------------------------------------------------------
+
+    async function loadFamilyData() {
+        let homeAddress = ''; // Declare homeAddress here
+        const loading = document.getElementById('loading');
+        const listContainer = document.getElementById('studentList');
+        
+        loading.classList.remove('d-none');
+        listContainer.innerHTML = ''; // Clear existing list
+        document.getElementById('message-container').innerHTML = '<p class="text-muted">Loading messages...</p>';
+
+        try {
+            const dateStr = nextSunday.toISOString();
+
+            // A. Fetch Family Details, Exclusions, and Temporary Address in parallel
+            const [familyRes, exclRes, tempAddrRes] = await Promise.all([
+                fetchWithAuth(`/api/user/${userId}`),
+                fetchWithAuth(`/api/exclusions?userId=${userId}&date=${dateStr}`),
+                fetchWithAuth(`/api/temporary-address?date=${dateStr}&userId=${userId}`)
+            ]);
+            const familyData = await familyRes.json();
+            const excludedStudentIds = await exclRes.json();
+            const tempAddressData = await tempAddrRes.json();
+            
+            // Update static info
+            document.getElementById('parentNameDisplay').innerText = familyData.parentName || 'My Family';
+            document.getElementById('addressText').innerText = familyData.address || 'Address Not Set';
+            document.getElementById('newPermanentAddress').value = familyData.address || '';
+            homeAddress = familyData.address || ''; // Store home address
+
+            // Event listeners for "Use Home Address" buttons
+            document.getElementById('useHomePickupAddressBtn').onclick = () => {
+                document.getElementById('newTemporaryPickupAddress').value = homeAddress;
+            };
+            document.getElementById('useHomeDropoffAddressBtn').onclick = () => {
+                document.getElementById('newTemporaryDropoffAddress').value = homeAddress;
+            };
+
+            // Clear temporary address fields when modal is opened
+            document.getElementById('temporaryAddressModal').addEventListener('show.bs.modal', () => {
+                document.getElementById('newTemporaryPickupAddress').value = '';
+                document.getElementById('newTemporaryDropoffAddress').value = '';
+                document.getElementById('additionalInstructions').value = '';
+            });
+
+            renderTemporaryAddressHistory(familyData.temporaryAddressHistory || []);
+
+            // --- Render Temporary Address Info ---
+            const tempDisplay = document.getElementById('temporaryAddressDisplay');
+            const tempBtn = document.getElementById('temporaryAddressBtn');
+            if (tempAddressData) {
+                document.getElementById('tempPickupDisplay').textContent = tempAddressData.pickupAddress;
+                
+                const dropoffSection = document.getElementById('tempDropoffSection');
+                if (tempAddressData.dropoffAddress) {
+                    document.getElementById('tempDropoffDisplay').textContent = tempAddressData.dropoffAddress;
+                    dropoffSection.classList.remove('d-none');
+                } else {
+                    dropoffSection.classList.add('d-none');
+                }
+
+                const instructionsSection = document.getElementById('tempInstructionsSection');
+                if (tempAddressData.instructions) {
+                    document.getElementById('tempInstructionsDisplay').textContent = tempAddressData.instructions;
+                    instructionsSection.classList.remove('d-none');
+                } else {
+                    instructionsSection.classList.add('d-none');
+                }
+                tempDisplay.classList.remove('d-none');
+                tempBtn.textContent = 'Change Temporary Pickup for this Sunday';
+                tempBtn.classList.replace('btn-outline-primary', 'btn-outline-warning');
+            }
+            
+            // C. Generate Cards
+            const studentsHtml = familyData.students.map(student => {
+                // Check if student's ID is in the array of excluded IDs
+                const isExcluded = excludedStudentIds.includes(student._id.toString());
+                return createStudentCard(student, isExcluded);
+            }).join('');
+            
+            listContainer.innerHTML = studentsHtml;
+
+            // D. Fetch and render messages
+            loadAndRenderMessages();
+
+        } catch (error) {
+            console.error("Error loading family data:", error);
+            listContainer.innerHTML = `<li class="list-group-item list-group-item-danger">Failed to load data. Check server connection.</li>`;
+        } finally {
+            loading.classList.add('d-none');
+        }
+    }
+
+    async function loadAndRenderMessages() {
+        const messageContainer = document.getElementById('message-container');
+        const broadcastContainer = document.getElementById('broadcast-container');
+
+        try {
+            // Fetch both global and direct messages
+            const [globalRes, directRes] = await Promise.all([
+                fetchWithAuth('/api/messages/global'),
+                fetchWithAuth(`/api/messages/${userId}`)
+            ]);
+    
+            const globalMessages = await globalRes.json();
+            const directMessages = await directRes.json();
+    
+            // --- Render Broadcasts ---
+            if (globalMessages.length === 0) {
+                broadcastContainer.innerHTML = ''; // Keep it clean if no broadcasts
+            } else {
+                const oneWeekAgo = new Date();
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+                broadcastContainer.innerHTML = `
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-megaphone-fill fs-4 me-2 text-primary"></i>
+                        <h4 class="mb-0 text-secondary">Broadcast Announcements</h4>
+                    </div>
+                ` + globalMessages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map(msg => {
+                    const isNew = new Date(msg.timestamp) > oneWeekAgo;
+                    return `
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between">
+                                <strong class="text-primary">Announcement</strong>
+                                <div>
+                                    ${isNew ? '<span class="badge bg-danger me-2">New</span>' : ''}
+                                    <small class="text-muted">${new Date(msg.timestamp).toLocaleDateString()}</small>
+                                </div>
+                            </div>
+                            <p class="mb-0 mt-1">${msg.content}</p>
+                        </div>
+                    `;
+                }).join('');
+            }
+    
+            // --- Render Direct Conversation ---
+            if (directMessages.length === 0) {
+                messageContainer.innerHTML = '<p class="text-muted text-center">No messages yet.</p>';
+            } else {
+                messageContainer.innerHTML = directMessages.map(msg => {
+                    const isSender = msg.senderId === userId;
+                    return `
+                        <div class="p-2 rounded ${isSender ? 'bg-primary-subtle' : 'bg-light'} mb-2">
+                            <strong class="text-primary">${msg.senderName}:</strong>
+                            <p class="mb-0">${msg.content}</p>
+                            <div class="text-muted small text-end" style="font-size: 0.75rem;">${new Date(msg.timestamp).toLocaleString()}</div>
+                        </div>
+                    `;
+                }).join('');
+                // Scroll to the bottom of the conversation
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+            }
+
+        } catch (error) {
+            broadcastContainer.innerHTML = '';
+            messageContainer.innerHTML = '<p class="text-danger">Could not load messages.</p>';
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 3. HTML CARD GENERATOR 
+    // ---------------------------------------------------------
+
+    function createStudentCard(student, isExcluded) {
+        // Determine initial state classes for visibility
+        const cardClass = isExcluded ? 'bg-light' : 'shadow-sm';
+        const comingDisplay = isExcluded ? 'd-none' : 'd-block';
+        const notComingBtn = isExcluded ? 'd-none' : 'd-block';
+        const reAddBtn = isExcluded ? 'd-block' : 'd-none';
+
+        return `
+            <li class="list-group-item d-flex flex-column flex-sm-row justify-content-sm-between align-items-sm-center ${cardClass}">
+                <h5 class="mb-3 mb-sm-0">${student.name}</h5>
+                
+                <div class="d-flex align-items-center w-100 w-sm-auto">
+                    
+                    <div class="pickup-status ${comingDisplay}" id="status-pickup-${student._id}">
+                        <i class="bi bi-check-circle-fill pickup-icon"></i>
+                        Marked for pickup
+                    </div>
+
+                    <div class="ms-auto">
+                        <button 
+                            class="btn btn-sm btn-success ${reAddBtn}"
+                            id="btn-re-add-${student._id}"
+                            onclick="toggleRide('${student._id}', 're-add')"
+                        >
+                            Re-Add
+                        </button>
+
+                        <button 
+                            class="btn btn-sm btn-danger ${notComingBtn}"
+                            id="btn-cancel-${student._id}"
+                            onclick="toggleRide('${student._id}', 'cancel')"
+                        >
+                            Not Coming
+                        </button>
+                    </div>
+                </div>
+            </li>
+        `;
+    }
+
+
+    // ---------------------------------------------------------
+    // 4. RIDE TOGGLER (Updates UI and calls API)
+    // ---------------------------------------------------------
+
+    async function toggleRide(studentId, action) {
+        const date = getNextSunday().toISOString();
+        
+        // Elements to toggle
+        const btnCancel = document.getElementById(`btn-cancel-${studentId}`);
+        const btnReAdd = document.getElementById(`btn-re-add-${studentId}`);
+        const statusText = document.getElementById(`status-pickup-${studentId}`);
+        const listItem = btnCancel.closest('li'); 
+
+        try {
+            const url = `/api/rider/${action}`;
+            
+            // Temporarily disable buttons
+            btnCancel.disabled = true;
+            btnReAdd.disabled = true;
+
+            const response = await fetchWithAuth(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentId, date }) // SECURITY FIX: Removed userId from body
+            });
+
+            if (response.ok) {
+                // Success: Update UI state
+                if (action === 'cancel') {
+                    // Change to Excluded state
+                    btnCancel.classList.add('d-none');
+                    btnReAdd.classList.remove('d-none');
+                    statusText.classList.add('d-none'); // HIDE status text
+                    listItem.classList.add('bg-light');
+                    listItem.classList.remove('shadow-sm');
+                } else {
+                    // Change back to Coming state
+                    btnCancel.classList.remove('d-none');
+                    btnReAdd.classList.add('d-none');
+                    statusText.classList.remove('d-none'); // SHOW status text
+                    listItem.classList.remove('bg-light');
+                    listItem.classList.add('shadow-sm');
+                }
+            } else {
+                alert(`Failed to update status: ${action}`);
+            }
+        } catch (error) {
+            console.error("Network error during toggle:", error);
+            alert("A network error occurred.");
+        } finally {
+            // Re-enable buttons regardless of outcome
+            btnCancel.disabled = false;
+            btnReAdd.disabled = false;
+        }
+    }
+
+    document.getElementById('sendMessageForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const input = document.getElementById('message-input');
+        const content = input.value.trim();
+
+        if (!content) return;
+        
+        const messageData = {
+            conversationId: userId,
+            senderId: userId,
+            senderName: localStorage.getItem('name') || 'Rider', // Corrected to use 'name'
+            content: content
+        };
+
+        input.disabled = true;
+
+        try {
+            await fetchWithAuth('/api/messages', { method: 'POST', body: JSON.stringify(messageData) });
+            input.value = '';
+            loadAndRenderMessages(); // Refresh message list
+        } finally {
+            input.disabled = false;
+        }
+    });
+
+    // ---------------------------------------------------------
+    // 5. ADDRESS CHANGE HANDLERS
+    // ---------------------------------------------------------
+
+    document.getElementById('permanentAddressForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const newAddress = document.getElementById('newPermanentAddress').value.trim();
+        const statusEl = document.getElementById('permanentAddressStatus');
+
+        if (!newAddress) return;
+
+        try {
+            const response = await fetchWithAuth(`/api/user/${userId}/address`, { // Use fetchWithAuth
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: newAddress }) // SECURITY FIX: userId is handled by token
+            });
+            const result = await response.json();
+            if (response.ok) {
+                document.getElementById('addressText').innerText = result.address;
+                statusEl.textContent = 'Address updated successfully!';
+                statusEl.className = 'text-success';
+                setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('permanentAddressModal')).hide(), 1500);
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            statusEl.textContent = `Error: ${error.message}`;
+            statusEl.className = 'text-danger';
+        }
+    });
+
+    document.getElementById('temporaryAddressForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const tempPickupAddress = document.getElementById('newTemporaryPickupAddress').value.trim();
+        const tempDropoffAddress = document.getElementById('newTemporaryDropoffAddress').value.trim();
+        const instructions = document.getElementById('additionalInstructions').value.trim();
+        const statusEl = document.getElementById('temporaryAddressStatus');
+
+        if (!tempPickupAddress) {
+            statusEl.textContent = 'Temporary Pickup Address is required.';
+            statusEl.className = 'text-danger';
+            return;
+        }
+
+        try {
+            const response = await fetchWithAuth('/api/temporary-address', { // Use fetchWithAuth
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pickupAddress: tempPickupAddress, dropoffAddress: tempDropoffAddress, instructions, effectiveDate: nextSunday.toISOString() }) // SECURITY FIX: Removed userId from body
+            });
+            if (response.ok) { // No need to parse result if only checking ok status
+                statusEl.textContent = 'Temporary address has been set for this Sunday!';
+                statusEl.className = 'text-success';
+                setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('temporaryAddressModal')).hide(), 2000);
+                loadFamilyData(); // Refresh history
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            statusEl.textContent = `Error: ${error.message}`;
+            statusEl.className = 'text-danger';
+        }
+    });
+
+    function renderTemporaryAddressHistory(history) {
+        const container = document.getElementById('temporaryAddressHistory');
+        if (history.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = '<p class="small mb-1"><strong>Use a recent pickup address:</strong></p>' + history.map(addr => 
+            `<button type="button" class="btn btn-sm btn-outline-secondary me-1 mb-1" onclick="useHistoricPickupAddress('${addr}')">${addr}</button>`
+        ).join('');
+    }
+
+    function useHistoricPickupAddress(address) {
+        document.getElementById('newTemporaryPickupAddress').value = address;
+    }
+
+
+    function logout() {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
+
+
+    // ---------------------------------------------------------
+    // 6. INITIALIZATION
+    // ---------------------------------------------------------
+
+    // Start loading the family data when the page loads
+    loadFamilyData();
+</script>
+
+</body>
+</html>

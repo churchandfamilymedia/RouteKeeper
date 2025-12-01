@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteKeeper - Driver Route</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; }
+        .container { max-width: 900px; } /* Standardized width */
+        .stop-card {
+            border-left: 5px solid #0d6efd; /* Blue indicator for active stops */
+            margin-bottom: 15px;
+        }
+        .kid-badge {
+            font-size: 1.1rem;
+            margin-right: 5px;
+        }
+        .action-btn {
+            height: 50px; /* Large touch targets for drivers */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Custom Darker Yellow for Accessibility */
+        .alert-warning {
+            background-color: #fff8e1; /* Lighter yellow background */
+            border-color: #ffecb3;
+            color: #8a6d3b; /* Darker text for contrast */
+        }
+    </style>
+</head>
+<body>
+
+<nav id="main-navbar" class="navbar navbar-dark bg-dark mb-3">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1">RouteKeeper</span>
+        <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+    </div>
+</nav>
+
+<div id="admin-nav-container"></div>
+
+<div class="container">
+
+    <!-- Rider Invite Section -->
+    <div class="card shadow-sm mt-4 mb-4">
+        <div class="card-body">
+            <h5 class="text-secondary">Invite a New Rider</h5>
+            <p class="small text-muted">Send a sign-up link to a new rider. They can fill out their own details.</p>
+            <form id="invite-form">
+                <input type="email" id="invite-email" class="form-control mb-2" placeholder="Rider's email address" required>
+                <button type="submit" class="btn btn-info w-100"><i class="bi bi-send-fill"></i> Send Invite</button>
+            </form>
+            <div id="invite-status" class="mt-2 text-center small"></div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="text-muted" id="dateDisplay">Loading Date...</h5> 
+    </div>
+
+    <!-- Notifications Section -->
+    <div id="notifications-container" class="mb-4">
+        <!-- Notifications will be injected here -->
+    </div>
+
+    <!-- Generate Route Button (New Prominent Location) -->
+    <div class="d-flex justify-content-between gap-2 my-4">
+        <button id="generatePickupRouteBtn" class="btn btn-success btn-lg flex-fill" onclick="generatePickupRoute()" disabled>
+            <i class="bi bi-map-fill"></i> Start Pick Ups
+        </button>
+        <button id="generateDropoffRouteBtn" class="btn btn-success btn-lg flex-fill" onclick="generateDropoffRoute()" disabled>
+            <i class="bi bi-map-fill"></i> Start Drop Offs
+        </button>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3 pt-3 border-top">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-bus-front-fill fs-4 me-2 text-primary"></i>
+            <h4 class="mb-0 text-secondary">Active Route Stops</h4>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="loadRoute()">Refresh List</button>
+    </div>
+
+    <div id="loading" class="text-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <div id="routeList" class="pb-5">
+        </div>
+    
+    <div id="emptyState" class="text-center mt-5 d-none">
+        <h3 class="text-muted">No riders found.</h3>
+        <p>Everyone has marked "Not Coming" for this date.</p>
+    </div>
+</div>
+
+<footer class="text-center text-muted py-4">
+    <small>&copy; Church and Family Media</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ---------------------------------------------------------
+    // 1. SECURITY & SETUP
+    // ---------------------------------------------------------
+    
+    // Check for token and role
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
+    if (!token || (role !== 'driver' && role !== 'admin')) {
+        localStorage.clear(); // Clear invalid session data
+        window.location.href = 'login.html';
+    }
+
+    // Centralized fetch function to handle authentication and errors
+    async function fetchWithAuth(url, options = {}) {
+        const headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`
+        };
+
+        if (options.body && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        const response = await fetch(url, { ...options, headers });
+
+        if (response.status === 401 || response.status === 403) {
+            logout(); // Token is invalid or expired
+        }
+        return response;
+    }
+
+    // Conditionally render Admin Navbar
+    if (role === 'admin') {
+        document.getElementById('main-navbar').remove(); // Remove the default navbar
+        const adminNavHtml = `
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="admin-dashboard.html"><i class="bi bi-shield-lock-fill"></i> RouteKeeper Admin</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavbar">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="adminNavbar">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <li class="nav-item"><a class="nav-link" href="admin-dashboard.html">Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link" href="admin-add-user.html">Add User</a></li>
+                        <li class="nav-item"><a class="nav-link" href="admin-manage-users.html">Manage Users</a></li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown">App Views</a>
+                            <ul class="dropdown-menu dropdown-menu-dark">
+                                <li><a class="dropdown-item" href="secretary.html">Secretary View</a></li>
+                                <li><a class="dropdown-item active" href="driver.html">Driver View</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </nav>
+        `;
+        document.getElementById('admin-nav-container').innerHTML = adminNavHtml;
+    }
+
+    function logout() {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
+
+    // Utility Function to calculate Next Sunday
+    function getNextSunday() {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? 0 : 7); 
+        const nextSundayDate = new Date(d.setDate(diff));
+        nextSundayDate.setHours(0, 0, 0, 0);
+        return nextSundayDate;
+    }
+    
+    // This will hold the families with active riders for the route generation
+    let activeFamilies = []; // Global variable
+    let tempAddresses = []; // Global variable to store temporary addresses
+
+    const nextSunday = getNextSunday();
+    const dateOptions = { weekday: 'long', month: 'short', day: 'numeric' };
+    const dateDisplayElement = document.getElementById('dateDisplay');
+    if (dateDisplayElement) {
+        dateDisplayElement.innerText = nextSunday.toLocaleDateString('en-US', dateOptions);
+    } 
+
+    // ---------------------------------------------------------
+    // 2. MAIN LOGIC: loadRoute()
+    // ---------------------------------------------------------
+
+    async function loadRoute() {
+        const loading = document.getElementById('loading');
+        const listContainer = document.getElementById('routeList');
+        const emptyState = document.getElementById('emptyState');
+        const generatePickupBtn = document.getElementById('generatePickupRouteBtn');
+        const generateDropoffBtn = document.getElementById('generateDropoffRouteBtn');
+        
+        if (loading) loading.classList.remove('d-none');
+        listContainer.innerHTML = ''; // Clear current list
+        if (emptyState) emptyState.classList.add('d-none');
+        generatePickupBtn.disabled = true; // Disable buttons during load
+        generateDropoffBtn.disabled = true;
+        activeFamilies = []; // Reset the list of active families
+        tempAddresses = []; // Clear previous temporary addresses
+        try {
+            const dateStr = nextSunday.toISOString();
+
+            // A. Fetch All Riders (Families)
+            const userRes = await fetchWithAuth('/api/users?role=rider'); 
+            const allFamilies = await userRes.json();
+
+            // B. Fetch all relevant data in parallel
+            const [exclRes, tempAddrRes, notificationsRes] = await Promise.all([
+                fetchWithAuth(`/api/exclusions/all?date=${dateStr}`),
+                fetchWithAuth(`/api/temporary-address?date=${dateStr}`), // Fetch all temp addresses for the day
+                fetchWithAuth('/api/notifications')
+            ]);
+            const exclusions = await exclRes.json();
+            tempAddresses = await tempAddrRes.json(); // Assign to global variable
+            const notifications = await notificationsRes.json();
+            
+            renderNotifications(notifications);
+
+            const excludedStudentIds = exclusions.map(e => e.studentId.toString());
+
+            let activeStopCount = 0;
+
+            // C. Process the Families
+            allFamilies.forEach(family => {
+                
+                const studentsArray = family.students || [];
+
+                const activeKids = studentsArray.filter(student => 
+                    !excludedStudentIds.includes(student._id.toString()) 
+                );
+
+                // If at least one kid is coming, show the card
+                if (activeKids.length > 0) {
+                    activeStopCount++;
+                    // Check for a temporary address for this family
+                    const tempAddr = tempAddresses.find(t => t.userId.toString() === family._id.toString());
+                    
+                    const cardHTML = createStopCard(family, activeKids, tempAddr); // Pass tempAddr
+                    activeFamilies.push(family); // Add family to our list for routing
+                    listContainer.innerHTML += cardHTML;
+                }
+            });
+
+            if (activeStopCount === 0) {
+                if (emptyState) emptyState.classList.remove('d-none');
+            } else {
+                generatePickupBtn.disabled = false; // Enable buttons if there are stops
+                generateDropoffBtn.disabled = false;
+            }
+
+        } catch (error) {
+            console.error("Error loading route:", error);
+            listContainer.innerHTML = `<div class="alert alert-danger">Error loading route data. Check server connection or console for details.</div>`;
+        } finally {
+            if (loading) loading.classList.add('d-none');
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 3. HTML GENERATOR
+    // ---------------------------------------------------------
+
+    function createStopCard(family, activeKids, tempAddressData = null) {
+        // Create a comma separated string of names
+        const namesHtml = activeKids.map(kid => 
+            `<span class="badge bg-success kid-badge">${kid.name}</span>`
+        ).join(' ');
+
+        let titleHtml = `<h5 class="card-title fw-bold">${family.parentName}</h5>`;
+        let displayAddress = family.address;
+        let mapDestinationAddress = family.address;
+        let instructionsHtml = '';
+
+        if (tempAddressData) {
+            titleHtml = `<h5 class="card-title fw-bold">${family.parentName} <span class="badge bg-warning text-dark">Temp Address</span></h5>`;
+            displayAddress = tempAddressData.pickupAddress;
+            mapDestinationAddress = tempAddressData.pickupAddress; // Map to pickup address
+            if (tempAddressData.dropoffAddress) {
+                displayAddress += ` (Dropoff: ${tempAddressData.dropoffAddress})`;
+            }
+            if (tempAddressData.instructions) {
+                // SECURITY FIX: Prevent XSS by not using innerHTML with user content.
+                const instructionsDiv = document.createElement('div');
+                instructionsDiv.className = 'alert alert-warning p-2 small';
+                instructionsDiv.innerHTML = `<i class="bi bi-info-circle-fill me-2"></i>`; // This part is safe as it's static
+                instructionsDiv.appendChild(document.createTextNode(tempAddressData.instructions)); // Safely append user text
+                instructionsHtml = instructionsDiv.outerHTML;
+            }
+        }
+
+        // URL Encode address for Maps
+        const mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapDestinationAddress)}`;
+
+        return `
+        <div class="card shadow-sm stop-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    ${titleHtml}
+                    <small class="text-muted">Route #${family.routeNumber || 1}</small>
+                </div>
+                
+                <div class="mb-3">
+                    <small class="text-muted text-uppercase" style="font-size: 0.75rem;">Picking Up:</small><br>
+                    ${namesHtml}
+                </div>
+                
+                <p class="card-text text-secondary mb-3">
+                    <i class="bi bi-geo-alt-fill"></i> ${displayAddress}
+                </p>
+                ${instructionsHtml}
+
+                <div class="row g-2">
+                    <div class="col-6">
+                        <a href="${mapUrl}" target="_blank" class="btn btn-outline-primary w-100 action-btn">
+                           <i class="bi bi-geo-alt-fill"></i> Map
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="tel:${family.phoneNumber}" class="btn btn-outline-success w-100 action-btn">
+                            <i class="bi bi-telephone-fill"></i> Call
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    // ---------------------------------------------------------
+    // 4. ROUTE GENERATION
+    // ---------------------------------------------------------
+
+    function renderNotifications(notifications) {
+        const container = document.getElementById('notifications-container');
+        if (!notifications || notifications.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-bell-fill fs-4 me-2 text-warning"></i>
+                    <h4 class="mb-0 text-secondary">Recent Notifications</h4>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearNotifications()">Clear Notifications</button>
+            </div>
+        ` + notifications.map(n => {
+            const isTemp = n.type === 'TemporaryAddress';
+            return `
+                <div class="alert ${isTemp ? 'alert-warning' : 'alert-danger'} small">
+                    <strong>${n.userName}:</strong> ${n.content} <span class="text-muted">(${new Date(n.createdAt).toLocaleDateString()})</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function generatePickupRoute() {
+        if (activeFamilies.length === 0) {
+            alert('No active riders to generate a pickup route for.');
+            return;
+        }
+
+        // The church's address is the start and end point for the route.
+        const churchAddress = "201 Catron St. Rural Retreat, VA, 24368";
+
+        const waypoints = activeFamilies
+            .map(family => {
+                const tempAddr = tempAddresses.find(t => t.userId.toString() === family._id.toString());
+                // Use pickupAddress if available, otherwise default to family.address
+                return encodeURIComponent(tempAddr && tempAddr.pickupAddress ? tempAddr.pickupAddress : family.address);
+            })
+            .join('|');
+
+        // Google Maps URL for directions. 
+        // It uses the church as the start and end, and optimizes the waypoints in between.
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(churchAddress)}&destination=${encodeURIComponent(churchAddress)}&waypoints=${waypoints}&travelmode=driving`;
+
+        // Open the generated URL in a new tab
+        window.open(mapsUrl, '_blank');
+    }
+
+    function generateDropoffRoute() {
+        if (activeFamilies.length === 0) {
+            alert('No active riders to generate a dropoff route for.');
+            return;
+        }
+
+        // The church's address is the start and end point for the route.
+        const churchAddress = "201 Catron St. Rural Retreat, VA, 24368";
+
+        // For dropoff, we use the dropoffAddress if specified, otherwise the permanent home address.
+        // The order of dropoffs might be different from pickups.
+        // We assume the driver starts at the church, drops off all kids, and returns to the church.
+        // The waypoints should be the dropoff locations.
+        // Note: Google Maps API for waypoints usually optimizes the order.
+        // If a specific dropoff order is needed, a more advanced routing solution would be required.
+        const waypoints = activeFamilies
+            .map(family => {
+                const tempAddr = tempAddresses.find(t => t.userId.toString() === family._id.toString());
+                // Use dropoffAddress if available, otherwise default to family.address (home)
+                return encodeURIComponent(tempAddr && tempAddr.dropoffAddress ? tempAddr.dropoffAddress : family.address);
+            })
+            .join('|');
+
+        // Google Maps URL for directions. 
+        // It uses the church as the start and end, and optimizes the waypoints in between.
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(churchAddress)}&destination=${encodeURIComponent(churchAddress)}&waypoints=${waypoints}&travelmode=driving`;
+
+        // Open the generated URL in a new tab
+        window.open(mapsUrl, '_blank');
+    }
+
+
+    // Start loading the route when the page loads
+    loadRoute();
+</script>
+<script>
+    // Rider Invite Form Logic
+    document.getElementById('invite-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const emailInput = document.getElementById('invite-email');
+        const email = emailInput.value.trim();
+        const statusEl = document.getElementById('invite-status');
+        const submitButton = e.target.querySelector('button');
+
+        statusEl.textContent = 'Sending...';
+        statusEl.className = 'mt-2 text-center small text-muted';
+        submitButton.disabled = true;
+
+        try {
+            const response = await fetchWithAuth('/api/invites', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const result = await response.json();
+            statusEl.textContent = result.message;
+            statusEl.className = response.ok ? 'mt-2 text-center small text-success' : 'mt-2 text-center small text-danger';
+            if (response.ok) emailInput.value = '';
+        } catch (error) {
+            statusEl.textContent = 'A network error occurred.';
+            statusEl.className = 'mt-2 text-center small text-danger';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>

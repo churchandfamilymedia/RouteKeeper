@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteKeeper - Rider Sign Up</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f4f7f6;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            background-color: #0d6efd;
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div id="main-card" class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">RouteKeeper</h4>
+                    <small id="signup-role-display">Account Sign Up</small>
+                </div>
+                <div class="card-body p-4">
+                    <div id="loading" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Verifying invite...</p>
+                    </div>
+
+                    <form id="signup-form" class="d-none">
+                        <p>Creating account for: <strong id="signup-email"></strong></p>
+                        
+                        <div class="mb-3">
+                            <label for="parentName" class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="parentName" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" autocomplete="username" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" required>
+                        </div>
+                        
+                        <div id="message-area" class="d-none" role="alert"></div>
+
+                        <button type="submit" class="btn btn-primary w-100 mt-3">Create Account</button>
+                    </form>
+                </div>
+            </div>
+            <div id="invalid-card" class="card d-none">
+                <div class="card-body p-4 text-center">
+                    <h5 class="text-danger">Invalid Invite Link</h5>
+                    <p id="invalid-message" class="text-muted">This link may be expired or has already been used.</p>
+                    <a href="/login.html" class="btn btn-primary mt-2">Go to Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const mainCard = document.getElementById('main-card');
+    const invalidCard = document.getElementById('invalid-card');
+    const loadingEl = document.getElementById('loading');
+    const signupForm = document.getElementById('signup-form');
+    const messageArea = document.getElementById('message-area');
+
+    // 1. Verify the token on page load
+    window.addEventListener('DOMContentLoaded', async () => {
+        if (!token) {
+            showInvalidCard('No invite token found in the link.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/invites/${token}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message);
+
+            const role = data.role || 'rider'; // Default to rider for backward compatibility
+            const roleName = role.charAt(0).toUpperCase() + role.slice(1);
+            document.getElementById('signup-email').textContent = data.email;
+            document.getElementById('signup-role-display').textContent = `${roleName} Account Sign Up`;
+            loadingEl.classList.add('d-none');
+            signupForm.classList.remove('d-none');
+        } catch (error) {
+            showInvalidCard(error.message);
+        }
+    });
+
+    // 2. Handle the form submission
+    signupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const submitButton = e.target.querySelector('button');
+        submitButton.disabled = true;
+
+        const userData = {
+            token: token,
+            parentName: document.getElementById('parentName').value,
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+        };
+
+        try {
+            const response = await fetch('/api/signup-from-invite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData),
+            });
+            const result = await response.json();
+            messageArea.textContent = result.message;
+            messageArea.className = response.ok ? 'alert alert-success' : 'alert alert-danger';
+            if (response.ok) setTimeout(() => window.location.href = '/login.html', 2000);
+        } catch (error) {
+            messageArea.textContent = 'An error occurred during sign-up.';
+            messageArea.className = 'alert alert-danger';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    function showInvalidCard(message) {
+        loadingEl.classList.add('d-none');
+        mainCard.classList.add('d-none');
+        invalidCard.classList.remove('d-none');
+        document.getElementById('invalid-message').textContent = message;
+    }
+</script>
+
+</body>
+</html>

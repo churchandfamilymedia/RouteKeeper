@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteKeeper - Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f4f7f6;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            background-color: #0d6efd; /* Bootstrap Primary Blue */
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            text-align: center;
+            padding: 20px;
+        }
+        .btn-primary {
+            padding: 12px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-5 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">RouteKeeper</h4>
+                    <small>Please Sign In</small>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" placeholder="Enter username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="password" placeholder="Enter password" required>
+                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                    <i class="bi bi-eye-fill"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end mb-3">
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#forgotPasswordModal">Forgot Password?</a>
+                        </div>
+                        
+                        <div id="errorMsg" class="alert alert-danger d-none" role="alert">
+                            Invalid username or password.
+                        </div>
+
+
+                        <button type="submit" class="btn btn-primary w-100">Sign In</button>
+                    </form>
+                    
+                </div>
+                <div class="card-footer text-center text-muted py-3">
+                    <small>&copy; Church and Family Media</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forgot Password Modal -->
+<div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="forgotPasswordModalLabel">Reset Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="forgotPasswordForm">
+                    <p>Enter the email address associated with your account, and we'll send you a link to reset your password.</p>
+                    <div class="mb-3">
+                        <label for="resetEmail" class="form-label">Email address</label>
+                        <input type="email" class="form-control" id="resetEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div id="resetStatusMsg" class="d-none" role="alert"></div>
+                    <button type="submit" class="btn btn-primary w-100">Send Reset Link</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.getElementById('forgotPasswordForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('resetEmail').value;
+        const resetStatusMsg = document.getElementById('resetStatusMsg');
+        const submitButton = this.querySelector('button[type="submit"]');
+
+        submitButton.disabled = true;
+        resetStatusMsg.className = 'd-none';
+
+        try {
+            const response = await fetch('/api/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email })
+            });
+
+            const result = await response.json();
+
+            // Always show a generic success message to prevent email enumeration
+            resetStatusMsg.textContent = result.message || 'If an account with that email exists, a password reset link has been sent.';
+            resetStatusMsg.className = 'alert alert-success';
+        } catch (err) {
+            resetStatusMsg.textContent = 'A network error occurred. Please try again.';
+            resetStatusMsg.className = 'alert alert-danger';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    document.getElementById('togglePassword').addEventListener('click', function () {
+        const passwordInput = document.getElementById('password');
+        const icon = this.querySelector('i');
+
+        // Toggle the input type
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+
+        // Toggle the icon
+        if (type === 'password') {
+            // Show the 'eye' icon
+            icon.classList.remove('bi-eye-slash-fill');
+            icon.classList.add('bi-eye-fill');
+        } else {
+            // Show the 'eye-slash' icon
+            icon.classList.remove('bi-eye-fill');
+            icon.classList.add('bi-eye-slash-fill');
+        }
+    });
+
+    // This is the complete script that handles form submission, API call, and routing.
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        e.preventDefault(); // <-- Guarantees no page refresh!
+        
+        const usernameInput = document.getElementById('username').value;
+        const passwordInput = document.getElementById('password').value;
+        const errorMsg = document.getElementById('errorMsg');
+
+        // Hide any previous errors
+        errorMsg.classList.add('d-none');
+        
+        try {
+            // 1. Send credentials to the Node.js server
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: usernameInput, password: passwordInput })
+            });
+
+            // **CRITICAL FIX:** Read the response body ONCE, regardless of status.
+            const result = await response.json();
+
+            // --- REDIRECTION LOGIC ---
+
+            if (response.ok) {
+                // SUCCESS: Store user data and redirect
+                
+                // Store user data in local storage
+                localStorage.setItem('userId', result.id);
+                localStorage.setItem('role', result.role);
+                localStorage.setItem('fullName', result.name);
+                localStorage.setItem('token', result.token); // <-- THIS WAS MISSING
+                
+                // REDIRECTION LOGIC:
+                if (result.role === 'rider') {
+                    window.location.href = 'rider.html';
+                } else if (result.role === 'driver') {
+                    window.location.href = 'driver.html';
+                } else if (result.role === 'secretary') {
+                    window.location.href = 'secretary.html'; 
+                } else if (result.role === 'admin') {
+                    window.location.href = 'admin-dashboard.html'; 
+                } else {
+                    // Fallback for unrecognized roles
+                    console.error("Unknown role:", result.role);
+                    window.location.reload(); 
+                }
+
+            } else {
+                // FAILED LOGIN (401, etc.): Show error from server body
+                errorMsg.innerText = result.message || "Invalid username or password.";
+                errorMsg.classList.remove('d-none'); 
+            }
+        } catch (err) {
+            // 4. Server or Network error
+            console.error("Login attempt failed (Check server status):", err);
+            errorMsg.innerText = "Connection error. Server may be offline.";
+            errorMsg.classList.remove('d-none');
+        }
+    });
+</script>
+
+</body>
+</html>

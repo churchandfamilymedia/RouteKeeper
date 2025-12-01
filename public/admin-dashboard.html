@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteKeeper - Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { max-width: 900px; } /* Standardized width */
+        .card-link {
+            text-decoration: none;
+            color: inherit;
+        }
+        .card-link .card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .card-link:hover .card {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+        }
+        .card-icon {
+            font-size: 3rem;
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="admin-dashboard.html">
+            <i class="bi bi-shield-lock-fill"></i> RouteKeeper Admin
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavbar">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="adminNavbar">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link active" href="admin-dashboard.html">Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="admin-add-user.html">Add User</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="admin-manage-users.html">Manage Users</a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">App Views</a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="secretary.html">Secretary View</a></li>
+                        <li><a class="dropdown-item" href="driver.html">Driver View</a></li>
+                    </ul>
+                </li>
+            </ul>
+            <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <div class="row">
+        <!-- Add User -->
+        <div class="col-md-4 mb-4">
+            <a href="admin-add-user.html" class="card-link">
+                <div class="card text-center h-100 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-person-plus-fill card-icon mb-3"></i>
+                        <h5 class="card-title">Add New User</h5>
+                        <p class="card-text text-muted">Create accounts for riders, drivers, or secretaries.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Invite User -->
+        <div class="col-md-4 mb-4">
+            <a href="#" class="card-link" data-bs-toggle="modal" data-bs-target="#inviteUserModal">
+                <div class="card text-center h-100 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-envelope-paper-fill card-icon text-success mb-3"></i>
+                        <h5 class="card-title">Invite Admin/Staff</h5>
+                        <p class="card-text text-muted">Send a secure sign-up link to a new admin, secretary, or driver.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+
+
+        <!-- Manage Users -->
+        <div class="col-md-4 mb-4">
+            <a href="admin-manage-users.html" class="card-link">
+                <div class="card text-center h-100 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-person-x-fill card-icon text-danger mb-3"></i>
+                        <h5 class="card-title">Manage Users</h5>
+                        <p class="card-text text-muted">Deactivate or restore rider accounts.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Secretary View -->
+        <div class="col-md-4 mb-4">
+            <a href="secretary.html" class="card-link">
+                <div class="card text-center h-100 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-clipboard2-data-fill card-icon mb-3"></i>
+                        <h5 class="card-title">Secretary View</h5>
+                        <p class="card-text text-muted">View full route details and send global messages.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Driver View -->
+        <div class="col-md-4 mb-4">
+            <a href="driver.html" class="card-link">
+                <div class="card text-center h-100 shadow-sm">
+                    <div class="card-body">
+                        <i class="bi bi-truck-front-fill card-icon mb-3"></i>
+                        <h5 class="card-title">Driver View</h5>
+                        <p class="card-text text-muted">Access the simplified route list for bus drivers.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Invite User Modal -->
+<div class="modal fade" id="inviteUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Invite New Admin/Staff</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="invite-form">
+                    <p class="small text-muted">The user will receive an email with a unique link to create their account with the role you select.</p>
+                    <div class="mb-3">
+                        <label for="invite-email" class="form-label">Email Address</label>
+                        <input type="email" id="invite-email" class="form-control" placeholder="user@example.com" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="invite-role" class="form-label">Assign Role</label>
+                        <select id="invite-role" class="form-select" required>
+                            <option value="" selected disabled>Select a role...</option>
+                            <option value="admin">Administrator</option>
+                            <option value="secretary">Secretary</option>
+                            <option value="driver">Driver</option>
+                        </select>
+                    </div>
+                    <div id="invite-status" class="mt-2 text-center small"></div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-send-fill"></i> Send Invite
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<footer class="text-center text-muted py-4">
+    <small>&copy; Church and Family Media</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Simple check to ensure only admin has access
+    if (localStorage.getItem('role') !== 'admin') {
+        window.location.href = 'login.html';
+    }
+
+    function logout() {
+        localStorage.clear();
+        window.location.href = 'login.html';
+    }
+
+    // Centralized fetch function to handle authentication
+    async function fetchWithAuth(url, options = {}) {
+        const token = localStorage.getItem('token');
+        const headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`
+        };
+
+        if (options.body && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        const response = await fetch(url, { ...options, headers });
+
+        if (response.status === 401 || response.status === 403) logout();
+        return response;
+    }
+
+    // Invite Form Logic
+    document.getElementById('invite-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const emailInput = document.getElementById('invite-email');
+        const roleInput = document.getElementById('invite-role');
+        const email = emailInput.value.trim();
+        const role = roleInput.value;
+        const statusEl = document.getElementById('invite-status');
+        const submitButton = e.target.querySelector('button');
+
+        statusEl.textContent = 'Sending...';
+        statusEl.className = 'mt-2 text-center small text-muted';
+        submitButton.disabled = true;
+
+        try {
+            const response = await fetchWithAuth('/api/invites', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, role }),
+            });
+            const result = await response.json();
+            statusEl.textContent = result.message;
+            statusEl.className = response.ok ? 'mt-2 text-center small text-success' : 'mt-2 text-center small text-danger';
+            if (response.ok) {
+                emailInput.value = '';
+                roleInput.value = '';
+            }
+        } catch (error) {
+            statusEl.textContent = 'A network error occurred.';
+            statusEl.className = 'mt-2 text-center small text-danger';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
