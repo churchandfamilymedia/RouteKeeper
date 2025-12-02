@@ -53,6 +53,11 @@
                             <input type="text" class="form-control" id="parentName" required>
                         </div>
 
+                        <div id="address-group" class="mb-3 d-none">
+                            <label for="address" class="form-label">Address</label>
+                            <input type="text" class="form-control" id="address" placeholder="Street address, city, state" />
+                        </div>
+
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
                             <input type="text" class="form-control" id="username" autocomplete="username" required>
@@ -73,7 +78,7 @@
                 <div class="card-body p-4 text-center">
                     <h5 class="text-danger">Invalid Invite Link</h5>
                     <p id="invalid-message" class="text-muted">This link may be expired or has already been used.</p>
-                    <a href="/login.html" class="btn btn-primary mt-2">Go to Login</a>
+                    <a href="/index.html" class="btn btn-primary mt-2">Go to Login</a>
                 </div>
             </div>
         </div>
@@ -105,6 +110,15 @@
             const roleName = role.charAt(0).toUpperCase() + role.slice(1);
             document.getElementById('signup-email').textContent = data.email;
             document.getElementById('signup-role-display').textContent = `${roleName} Account Sign Up`;
+            // Show address field only for rider signups
+            const addressGroup = document.getElementById('address-group');
+            if (role === 'rider') {
+                addressGroup.classList.remove('d-none');
+                document.getElementById('address').setAttribute('required', 'required');
+            } else {
+                addressGroup.classList.add('d-none');
+                document.getElementById('address').removeAttribute('required');
+            }
             loadingEl.classList.add('d-none');
             signupForm.classList.remove('d-none');
         } catch (error) {
@@ -123,6 +137,7 @@
             parentName: document.getElementById('parentName').value,
             username: document.getElementById('username').value,
             password: document.getElementById('password').value,
+            address: document.getElementById('address') ? document.getElementById('address').value : undefined
         };
 
         try {
@@ -134,7 +149,7 @@
             const result = await response.json();
             messageArea.textContent = result.message;
             messageArea.className = response.ok ? 'alert alert-success' : 'alert alert-danger';
-            if (response.ok) setTimeout(() => window.location.href = '/login.html', 2000);
+            if (response.ok) setTimeout(() => window.location.href = '/index.html', 2000);
         } catch (error) {
             messageArea.textContent = 'An error occurred during sign-up.';
             messageArea.className = 'alert alert-danger';

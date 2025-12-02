@@ -297,9 +297,16 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
             return res.status(409).json({ message: 'A user with this email already exists.' });
         }
 
-        // Create a new invite token and save it
-        const invite = new Invite({ email });
-        await invite.save();
+    // Determine invite role. Default to 'rider'. Allow admin invites only from admin users.
+    const requestedRole = (req.body.role || 'rider').toLowerCase();
+    const allowedRoles = ['rider', 'secretary', 'driver'];
+    if (req.user && req.user.role === 'admin') allowedRoles.push('admin');
+    const inviteRole = allowedRoles.includes(requestedRole) ? requestedRole : 'rider';
+
+    // Create a new invite token and save it with role
+    const invite = new Invite({ email, role: inviteRole });
+    await invite.save();
+    console.log(`Created invite for ${email} with role=${inviteRole} token=${invite.token}`);
 
         // Use the BASE_URL from environment variables for the link
         const signUpLink = `${process.env.BASE_URL}/signup.html?token=${invite.token}`;
@@ -364,7 +371,7 @@ app.get('/api/invites/:token', async (req, res) => {
             return res.status(404).json({ message: 'This invite link is invalid or has expired.' });
         }
 
-        res.status(200).json({ email: invite.email });
+        res.status(200).json({ email: invite.email, role: invite.role });
     } catch (error) {
         console.error('Error verifying invite token:', error);
         res.status(500).json({ message: 'Server error.' });
@@ -376,7 +383,7 @@ app.get('/api/invites/:token', async (req, res) => {
  * Creates a new rider account from a valid invite.
  */
 app.post('/api/signup-from-invite', async (req, res) => {
-    const { token, parentName, username, password } = req.body;
+    const { token, parentName, username, password, address } = req.body;
 
     try {
         const invite = await Invite.findOne({
@@ -389,16 +396,18 @@ app.post('/api/signup-from-invite', async (req, res) => {
             return res.status(400).json({ message: 'This invite link is invalid or has expired.' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({
             username,
             email: invite.email,
             password: hashedPassword,
-            role: 'rider',
+            role: invite.role || 'rider',
             parentName: parentName,
+            address: invite.role === 'rider' ? address : undefined,
             passwordHistory: [hashedPassword]
         });
         await newUser.save();
+    console.log(`Created user from invite: ${newUser.email} role=${newUser.role} id=${newUser._id}`);
 
         invite.isUsed = true;
         await invite.save();

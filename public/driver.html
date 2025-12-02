@@ -116,7 +116,7 @@
     const role = localStorage.getItem('role');
     if (!token || (role !== 'driver' && role !== 'admin')) {
         localStorage.clear(); // Clear invalid session data
-        window.location.href = 'login.html';
+    window.location.href = '/index.html';
     }
 
     // Centralized fetch function to handle authentication and errors
@@ -171,7 +171,7 @@
 
     function logout() {
         localStorage.clear();
-        window.location.href = 'login.html';
+    window.location.href = '/index.html';
     }
 
     // Utility Function to calculate Next Sunday

@@ -115,12 +115,12 @@
 <script>
     // Security Check
     if (localStorage.getItem('role') !== 'admin') {
-        window.location.href = 'login.html';
+    window.location.href = '/index.html';
     }
 
     function logout() {
         localStorage.clear();
-        window.location.href = 'login.html';
+    window.location.href = '/index.html';
     }
 
     // Centralized fetch function to handle authentication and errors

@@ -9,6 +9,11 @@ const InviteSchema = new mongoose.Schema({
         unique: true, // Ensure only one active invite per email
         trim: true
     },
+    role: {
+        type: String,
+        enum: ['rider', 'secretary', 'driver', 'admin'],
+        default: 'rider'
+    },
     token: {
         type: String,
         required: true,
