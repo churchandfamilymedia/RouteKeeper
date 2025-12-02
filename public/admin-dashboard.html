@@ -69,7 +69,7 @@
                     <div class="card-body">
                         <i class="bi bi-person-plus-fill card-icon mb-3"></i>
                         <h5 class="card-title">Add New User</h5>
-                        <p class="card-text text-muted">Create accounts for riders, drivers, or secretaries.</p>
+                        <p class="card-text text-muted">Create accounts administratively.</p>
                     </div>
                 </div>
             </a>
@@ -82,7 +82,7 @@
                     <div class="card-body">
                         <i class="bi bi-envelope-paper-fill card-icon text-success mb-3"></i>
                         <h5 class="card-title">Invite Admin/Staff</h5>
-                        <p class="card-text text-muted">Send a secure sign-up link to a new admin, secretary, or driver.</p>
+                        <p class="card-text text-muted">Send a secure sign-up link.</p>
                     </div>
                 </div>
             </a>
@@ -97,7 +97,7 @@
                     <div class="card-body">
                         <i class="bi bi-person-x-fill card-icon text-danger mb-3"></i>
                         <h5 class="card-title">Manage Users</h5>
-                        <p class="card-text text-muted">Deactivate or restore rider accounts.</p>
+                        <p class="card-text text-muted">Deactivate or restore accounts.</p>
                     </div>
                 </div>
             </a>
@@ -150,6 +150,7 @@
                         <label for="invite-role" class="form-label">Assign Role</label>
                         <select id="invite-role" class="form-select" required>
                             <option value="" selected disabled>Select a role...</option>
+                            <option value="rider">Rider (Parent/Family)</option>
                             <option value="admin">Administrator</option>
                             <option value="secretary">Secretary</option>
                             <option value="driver">Driver</option>

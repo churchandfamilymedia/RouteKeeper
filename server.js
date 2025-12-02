@@ -231,6 +231,16 @@ const loginLimiter = rateLimit({
     skipSuccessfulRequests: true // Don't count successful logins
 });
 
+// Rate Limiter for forgot-password to prevent email spam attacks
+const forgotPasswordLimiter = rateLimit({
+	windowMs: 60 * 60 * 1000, // 1 hour
+	max: 5, // Limit each IP to 5 password reset requests per hour
+	message: { message: 'Too many password reset attempts from this IP, please try again after 1 hour' },
+	standardHeaders: true,
+	legacyHeaders: false,
+	skipSuccessfulRequests: false // Count all requests (don't skip successes)
+});
+
 
 /**
  * POST /api/login
@@ -430,7 +440,7 @@ app.post('/api/signup-from-invite', async (req, res) => {
  * POST /api/forgot-password
  * Handles the initial request, generates a token, and sends a reset email.
  */
-app.post('/api/forgot-password', async (req, res) => {
+app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email is required.' });
 
@@ -449,6 +459,7 @@ app.post('/api/forgot-password', async (req, res) => {
             { _id: user._id },
             { $set: { passwordResetToken: resetToken, passwordResetExpires: tokenExpiry } }
         );
+        console.log(`Password reset token generated for user: ${user.email}`);
 
         // Use the BASE_URL from environment variables for the link
         const resetURL = `${process.env.BASE_URL}/reset-password.html?token=${resetToken}`;
@@ -456,6 +467,7 @@ app.post('/api/forgot-password', async (req, res) => {
         await transporter.sendMail({
             to: user.email,
             from: process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com',
+            envelope: { from: process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com', to: user.email },
             subject: 'Password Reset Request for RouteKeeper',
             html: `<p>You requested a password reset. Please click the following link to set a new password:</p><p><a href="${resetURL}">${resetURL}</a></p><p>This link will expire in one hour.</p><p>If you did not request this, please ignore this email.</p>`
         });
@@ -477,6 +489,11 @@ app.post('/api/reset-password', async (req, res) => {
 
     if (!token || !password) {
         return res.status(400).json({ message: 'Token and new password are required.' });
+    }
+
+    // Validate password length (minimum 8 characters)
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
     }
 
     try {
@@ -511,6 +528,7 @@ app.post('/api/reset-password', async (req, res) => {
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save();
+        console.log(`Password successfully reset for user: ${user.email}`);
 
         res.status(200).json({ message: 'Your password has been successfully reset. You will be redirected to the login page shortly.' });
 
