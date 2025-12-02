@@ -42,14 +42,36 @@ mongoose.connect(MONGO_URI)
     .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // Nodemailer Transporter Setup
-// This uses the credentials from your .env file
+// Read SMTP configuration from environment variables so we can support
+// different providers (smtp2go, gmail, cPanel, etc.).
+// Preferred env vars:
+//  - SMTP_HOST (default: mail.smtp2go.com)
+//  - SMTP_PORT (default: 587)
+//  - SMTP_SECURE ("true" to use TLS, default: false)
+//  - SMTP_USER or EMAIL_USER
+//  - SMTP_PASS or EMAIL_PASS or SMTP2GO_PASS
+const smtpHost = process.env.SMTP_HOST || 'mail.smtp2go.com';
+const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 2525;
+const smtpSecure = (process.env.SMTP_SECURE === 'true');
+const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.SMTP2GO_PASS;
+
 const transporter = nodemailer.createTransport({
-    host: 'mail.smtp2go.com',
-    port: 587,
-    secure: false, // Use STARTTLS
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: smtpUser,
+        pass: smtpPass
+    }
+});
+
+// Verify transporter configuration at startup so misconfiguration is logged early
+transporter.verify((err, success) => {
+    if (err) {
+        console.error('Email transporter configuration error:', err);
+    } else {
+        console.log('Email transporter is configured and ready.');
     }
 });
 
@@ -275,24 +297,40 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
             return res.status(409).json({ message: 'A user with this email already exists.' });
         }
 
-        // Create a new invite token
+        // Create a new invite token and save it
         const invite = new Invite({ email });
         await invite.save();
 
         // Use the BASE_URL from environment variables for the link
         const signUpLink = `${process.env.BASE_URL}/signup.html?token=${invite.token}`;
 
-        // Send the email
-        await transporter.sendMail({
-            to: email,
-            from: process.env.EMAIL_USER,
-            subject: 'You are invited to join RouteKeeper',
-            html: `<p>Please click the following link to create your RouteKeeper account:</p>
-                   <p><a href="${signUpLink}">${signUpLink}</a></p>
-                   <p>This link will expire in 7 days.</p>`
-        });
+        // Send the email. If sending fails, remove the saved invite so we don't leave
+        // a token that the user can't use.
+        try {
+            await transporter.sendMail({
+                to: email,
+                from: process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com',
+                subject: 'You are invited to join RouteKeeper',
+                html: `<p>Please click the following link to create your RouteKeeper account:</p>
+                       <p><a href="${signUpLink}">${signUpLink}</a></p>
+                       <p>This link will expire in 7 days.</p>`
+            });
 
-        res.status(201).json({ message: `An invite has been sent to ${email}.` });
+            res.status(201).json({ message: `An invite has been sent to ${email}.` });
+
+        } catch (mailErr) {
+            // Log the mail error for diagnosis
+            console.error('Error sending invite email:', mailErr);
+
+            // Attempt to delete the invite we just created to avoid orphaned tokens
+            try {
+                await Invite.deleteOne({ _id: invite._id });
+            } catch (delErr) {
+                console.error('Error deleting invite after failed email send:', delErr);
+            }
+
+            return res.status(500).json({ message: 'Failed to send invite email. Please try again later.' });
+        }
 
     } catch (error) {
         // Handle potential unique constraint errors on the Invite model for the email
@@ -403,7 +441,7 @@ app.post('/api/forgot-password', async (req, res) => {
 
         await transporter.sendMail({
             to: user.email,
-            from: process.env.EMAIL_USER,
+            from: process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com',
             subject: 'Password Reset Request for RouteKeeper',
             html: `<p>You requested a password reset. Please click the following link to set a new password:</p><p><a href="${resetURL}">${resetURL}</a></p><p>This link will expire in one hour.</p><p>If you did not request this, please ignore this email.</p>`
         });
