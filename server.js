@@ -307,9 +307,13 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
         // Send the email. If sending fails, remove the saved invite so we don't leave
         // a token that the user can't use.
         try {
+            const fromAddress = process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com';
+            console.log(`Sending invite email from: ${fromAddress} to: ${email}`);
+
             await transporter.sendMail({
+                from: fromAddress,
+                envelope: { from: fromAddress, to: email },
                 to: email,
-                from: process.env.FROM_EMAIL || process.env.EMAIL_USER || process.env.SMTP_USER || 'donotreply@churchandfam.com',
                 subject: 'You are invited to join RouteKeeper',
                 html: `<p>Please click the following link to create your RouteKeeper account:</p>
                        <p><a href="${signUpLink}">${signUpLink}</a></p>
@@ -319,8 +323,9 @@ app.post('/api/invites', authenticateToken, authorize(['admin', 'secretary', 'dr
             res.status(201).json({ message: `An invite has been sent to ${email}.` });
 
         } catch (mailErr) {
-            // Log the mail error for diagnosis
+            // Log the mail error for diagnosis (include the from we attempted)
             console.error('Error sending invite email:', mailErr);
+            console.error('Invite email attempted from:', process.env.FROM_EMAIL, process.env.EMAIL_USER, process.env.SMTP_USER);
 
             // Attempt to delete the invite we just created to avoid orphaned tokens
             try {
