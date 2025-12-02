@@ -45,8 +45,8 @@ mongoose.connect(MONGO_URI)
 // This uses the credentials from your .env file
 const transporter = nodemailer.createTransport({
     host: 'mail.smtp2go.com',
-    port: 465,
-    secure: true, // Use SMTPS (SSL)
+    port: 587,
+    secure: false, // Use STARTTLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
