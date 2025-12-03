@@ -1050,37 +1050,9 @@ app.post('/api/calendar/nonop/bulk', authenticateToken, authorize(['admin', 'sec
  * Removes a non-operation entry (re-opens service on that Sunday) and announces the change.
  */
 app.delete('/api/calendar/nonop/:id', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const doc = await NonOperation.findByIdAndDelete(id);
-        if (!doc) return res.status(404).json({ message: 'Non-operation date not found.' });
-
-        // Remove any scheduled/global announcements tied to this groupId (if present)
-        if (doc.groupId) {
-            try {
-                await Message.deleteMany({ conversationId: 'global', groupId: doc.groupId });
-            } catch (delErr) {
-                console.error('Error deleting related announcements by groupId:', delErr);
-            }
-        } else {
-            // Fallback: remove messages containing the date string
-            try {
-                const dateToken = new Date(doc.date).toLocaleDateString();
-                await Message.deleteMany({ conversationId: 'global', content: new RegExp(dateToken) });
-            } catch (delErr) {
-                console.error('Error deleting date-related announcements:', delErr);
-            }
-        }
-
-        const content = `Service Update: Bus WILL run on ${new Date(doc.date).toLocaleDateString()} (previously marked non-operational).`;
-        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
-        await announcement.save();
-
-        res.status(200).json({ message: 'Non-operation date removed.' });
-    } catch (error) {
-        console.error('Error deleting non-operation date:', error);
-        res.status(500).json({ message: 'Error removing date.' });
-    }
+    // Non-operational days are not clearable via the API.
+    // This endpoint is intentionally disabled to prevent accidental reopening of service days.
+    return res.status(403).json({ message: 'Non-operational days cannot be removed.' });
 });
 
 
@@ -1110,13 +1082,13 @@ app.get('/api/notifications', authenticateToken, authorize(['admin', 'secretary'
  */
 app.post('/api/notifications/mark-read', authenticateToken, authorize(['admin', 'secretary', 'driver']), async (req, res) => {
     try {
-        // Mark all notifications as read. No exclusions.
+        // Mark only this user's notifications as read to avoid clearing global notifications for others
         const result = await Notification.updateMany(
-            { isRead: false }, // Target only unread notifications
+            { isRead: false, userId: req.user._id }, // Target only unread notifications for the requesting user
             { $set: { isRead: true } }
         );
 
-        res.status(200).json({ message: 'Notifications cleared.', modifiedCount: result.modifiedCount });
+        res.status(200).json({ message: 'Your notifications cleared.', modifiedCount: result.modifiedCount });
     } catch (error) {
         console.error('Error marking notifications as read:', error);
         res.status(500).json({ message: 'Internal server error.' });

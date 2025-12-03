@@ -71,7 +71,6 @@
         </div>
         <div id="date-actions" class="d-grid gap-2">
           <button id="mark-nonop" class="btn btn-danger">Mark as Non-Operational</button>
-          <button id="clear-nonop" class="btn btn-outline-secondary">Clear Non-Operational</button>
         </div>
       </div>
     </div>
@@ -248,8 +247,6 @@
     selectedDateObj = { dateISO, id, occasion, isNonOp: el.classList.contains('sunday-nonop') };
     document.getElementById('selectedDateLabel').textContent = new Date(dateISO).toLocaleDateString();
     document.getElementById('occasion-input').value = occasion;
-    // show/hide clear button depending on state
-    document.getElementById('clear-nonop').style.display = selectedDateObj.isNonOp ? 'block' : 'none';
     dateModal.show();
   }
 
@@ -263,27 +260,6 @@
       await loadCalendar();
     } else {
       alert(json.message || 'Failed to mark date.');
-    }
-  });
-
-  document.getElementById('clear-nonop').addEventListener('click', async () => {
-    if (!selectedDateObj.id) {
-      // find the id from currentData
-      for (const m of currentData) {
-        for (const s of m.sundays) {
-          if (s.date === selectedDateObj.dateISO && s.isNonOp) selectedDateObj.id = s.id;
-        }
-      }
-    }
-    if (!selectedDateObj.id) return alert('No non-operational record found.');
-
-    const resp = await fetchWithAuth(`/api/calendar/nonop/${selectedDateObj.id}`, { method: 'DELETE' });
-    const json = await resp.json();
-    if (resp.ok) {
-      dateModal.hide();
-      await loadCalendar();
-    } else {
-      alert(json.message || 'Failed to clear non-operational.');
     }
   });
 
