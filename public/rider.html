@@ -247,6 +247,29 @@
         try {
             const dateStr = nextSunday.toISOString();
 
+            // Check if this date is a non-operational day
+            const nonOpCheck = await fetchWithAuth(`/api/calendar/nonop-check?date=${dateStr}`);
+            const nonOpData = await nonOpCheck.json();
+            
+            if (nonOpData.isNonOp) {
+                // Display non-op message and hide student controls
+                loading.classList.add('d-none');
+                listContainer.innerHTML = `
+                    <div class="alert alert-warning text-center" role="alert">
+                        <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Service Suspended</h4>
+                        <p class="mb-0"><strong>${nonOpData.occasion}</strong></p>
+                        <hr>
+                        <p class="mb-0 small">No service will be provided on this date.</p>
+                    </div>
+                `;
+                // Still load family info for display but skip student controls
+                const familyRes = await fetchWithAuth(`/api/user/${userId}`);
+                const familyData = await familyRes.json();
+                document.getElementById('parentNameDisplay').innerText = familyData.parentName || 'My Family';
+                document.getElementById('addressText').innerText = familyData.address || 'Address Not Set';
+                return;
+            }
+
             // A. Fetch Family Details, Exclusions, and Temporary Address in parallel
             const [familyRes, exclRes, tempAddrRes] = await Promise.all([
                 fetchWithAuth(`/api/user/${userId}`),

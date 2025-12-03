@@ -1012,6 +1012,38 @@ function getSundaysByMonth(months = 6) {
 }
 
 /**
+ * GET /api/calendar/nonop-check?date=YYYY-MM-DD
+ * Check if a specific date is a non-operational day. Returns occasion if non-op.
+ */
+app.get('/api/calendar/nonop-check', authenticateToken, authorize(['admin', 'secretary', 'driver']), async (req, res) => {
+    try {
+        const { date } = req.query;
+        if (!date) return res.status(400).json({ message: 'Date parameter required.' });
+        
+        const checkDate = new Date(date);
+        checkDate.setHours(0, 0, 0, 0);
+        
+        const nonOp = await NonOperation.findOne({ 
+            date: checkDate, 
+            isActive: true 
+        });
+        
+        if (nonOp) {
+            return res.status(200).json({ 
+                isNonOp: true, 
+                occasion: nonOp.occasion || 'Service suspended',
+                date: nonOp.date
+            });
+        }
+        
+        res.status(200).json({ isNonOp: false });
+    } catch (error) {
+        console.error('Error checking non-op date:', error);
+        res.status(500).json({ message: 'Error checking date.' });
+    }
+});
+
+/**
  * GET /api/calendar/sundays?months=6
  * Returns the next N months' Sundays and whether they are marked non-operational.
  */

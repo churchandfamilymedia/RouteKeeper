@@ -266,6 +266,26 @@
         try {
             const dateStr = nextSunday.toISOString();
 
+            // Check if this date is a non-operational day
+            const nonOpCheck = await fetchWithAuth(`/api/calendar/nonop-check?date=${dateStr}`);
+            const nonOpData = await nonOpCheck.json();
+            
+            if (nonOpData.isNonOp) {
+                // Display non-op message and hide rider list
+                if (loading) loading.classList.add('d-none');
+                listContainer.innerHTML = `
+                    <div class="alert alert-warning text-center" role="alert">
+                        <h4 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Service Suspended</h4>
+                        <p class="mb-0"><strong>${nonOpData.occasion}</strong></p>
+                        <hr>
+                        <p class="mb-0 small">No riders will be picked up on this date.</p>
+                    </div>
+                `;
+                generatePickupBtn.disabled = true;
+                generateDropoffBtn.disabled = true;
+                return;
+            }
+
             // A. Fetch All Riders (Families)
             const userRes = await fetchWithAuth('/api/users?role=rider'); 
             const allFamilies = await userRes.json();
