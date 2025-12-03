@@ -215,8 +215,8 @@
         
         let students = [];
 
-        // Collect data specific to the Rider role
-        if (role === 'rider') {
+        // Collect data specific to the Rider role and TempRider
+        if (role === 'rider' || role === 'tempRider') {
             const studentInputs = document.querySelectorAll('#studentsContainer .student-name-input');
             
             studentInputs.forEach(input => {
