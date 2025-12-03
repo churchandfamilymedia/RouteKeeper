@@ -119,7 +119,7 @@ const TemporaryAddress = mongoose.model('TemporaryAddress', TemporaryAddressSche
 
 // --- Notification Model
 const NotificationSchema = new mongoose.Schema({
-    type: { type: String, enum: ['PermanentAddressChange', 'TemporaryAddress'], required: true },
+    type: { type: String, enum: ['PermanentAddressChange', 'TemporaryAddress', 'ServiceSuspension'], required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     userName: { type: String, required: true },
     content: { type: String, required: true },
@@ -131,6 +131,8 @@ const Notification = mongoose.model('Notification', NotificationSchema);
 
 // --- Invite Model
 const Invite = require('./models/Invite');
+// --- Non-Operation Model (calendar)
+const NonOperation = require('./models/NonOperation');
 
 // -----------------------------------------------------
 // 3. CORE ROUTES & STATIC FILE HANDLERS
@@ -870,6 +872,217 @@ app.get('/api/temporary-address', authenticateToken, async (req, res) => {
     }
 });
 
+// -----------------------------------------------------
+// 4.1 CALENDAR - SUNDAYS & NON-OPERATION MANAGEMENT
+// -----------------------------------------------------
+
+/**
+ * Helper: generate list of Sunday dates for the next N months grouped by month
+ */
+function getSundaysByMonth(months = 6) {
+    const result = [];
+    const today = new Date();
+    // Start from the beginning of current month
+    let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    for (let m = 0; m < months; m++) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
+        // find first day of month
+        const firstOfMonth = new Date(year, month, 1);
+        const sundays = [];
+
+        // iterate days in month
+        for (let d = 1; d <= 31; d++) {
+            const dt = new Date(year, month, d);
+            if (dt.getMonth() !== month) break; // passed month
+            if (dt.getDay() === 0) { // Sunday
+                sundays.push(new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+            }
+        }
+
+        result.push({ year, month, sundays });
+        // move to next month
+        cursor = new Date(year, month + 1, 1);
+    }
+
+    return result;
+}
+
+/**
+ * GET /api/calendar/sundays?months=6
+ * Returns the next N months' Sundays and whether they are marked non-operational.
+ */
+app.get('/api/calendar/sundays', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
+    try {
+        const months = parseInt(req.query.months || '6', 10);
+        const monthsData = getSundaysByMonth(months);
+
+        // Build date range to query non-operation docs
+        const startDate = monthsData[0].sundays.length ? monthsData[0].sundays[0] : new Date();
+        const lastMonth = monthsData[monthsData.length - 1];
+        const lastSundays = lastMonth.sundays;
+        const endDate = lastSundays.length ? lastSundays[lastSundays.length - 1] : new Date();
+
+        const nonOps = await NonOperation.find({ date: { $gte: startDate, $lte: endDate } });
+        const nonOpMap = {};
+        nonOps.forEach(n => {
+            const key = new Date(n.date).toISOString().slice(0,10);
+            nonOpMap[key] = { id: n._id, occasion: n.occasion, groupId: n.groupId };
+        });
+
+        const response = monthsData.map(m => ({
+            year: m.year,
+            month: m.month,
+            monthLabel: new Date(m.year, m.month, 1).toLocaleString('default', { month: 'short' }),
+            sundays: m.sundays.map(d => {
+                const iso = d.toISOString().slice(0,10);
+                const mapped = nonOpMap[iso];
+                return {
+                    date: d.toISOString(),
+                    day: d.getDate(),
+                    monthAbbr: d.toLocaleString('default', { month: 'short' }),
+                    isNonOp: Boolean(mapped),
+                    occasion: mapped ? mapped.occasion : undefined,
+                    id: mapped ? mapped.id : undefined
+                };
+            })
+        }));
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('Error fetching calendar sundays:', error);
+        res.status(500).json({ message: 'Error fetching calendar.' });
+    }
+});
+
+/**
+ * POST /api/calendar/nonop
+ * Body: { date: 'YYYY-MM-DD', occasion: '...' }
+ * Marks a single Sunday as non-operational and creates a global announcement.
+ */
+app.post('/api/calendar/nonop', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
+    try {
+        const { date, occasion } = req.body;
+        if (!date) return res.status(400).json({ message: 'Date is required.' });
+
+        const d = new Date(date);
+        d.setHours(0,0,0,0);
+
+        // Upsert non-operation for this date and ensure it has a groupId so announcements are dedupable
+        let existing = await NonOperation.findOne({ date: d });
+        let groupId;
+        if (existing) {
+            existing.occasion = occasion || existing.occasion;
+            if (!existing.groupId) existing.groupId = crypto.randomBytes(8).toString('hex');
+            groupId = existing.groupId;
+            await existing.save();
+        } else {
+            groupId = crypto.randomBytes(8).toString('hex');
+            await NonOperation.create({ date: d, occasion: occasion || '', createdBy: req.user._id, groupId });
+        }
+
+        // Create a single global message to notify riders (include gid token to avoid duplicates)
+        const formatted = d.toLocaleDateString();
+        const content = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '') + ` [gid:${groupId}]`;
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+        await announcement.save();
+
+        res.status(200).json({ message: 'Date marked as non-operational.' });
+    } catch (error) {
+        console.error('Error marking non-operational date:', error);
+        res.status(500).json({ message: 'Error marking date.' });
+    }
+});
+
+/**
+ * POST /api/calendar/nonop/bulk
+ * Body: { startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD', occasion: '...' }
+ * Marks all Sundays in the span as non-operational. Creates a single announcement describing the span.
+ */
+app.post('/api/calendar/nonop/bulk', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
+    try {
+        const { startDate, endDate, occasion } = req.body;
+        if (!startDate || !endDate) return res.status(400).json({ message: 'Start and end dates are required.' });
+
+        const start = new Date(startDate);
+        start.setHours(0,0,0,0);
+        const end = new Date(endDate);
+        end.setHours(0,0,0,0);
+        if (end < start) return res.status(400).json({ message: 'End date must be after start date.' });
+
+        // Find all Sundays in the span
+        const datesToCreate = [];
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() === 0) { // Sunday
+                datesToCreate.push(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+            }
+        }
+
+        const groupId = crypto.randomBytes(8).toString('hex');
+        const ops = [];
+        for (const dt of datesToCreate) {
+            // upsert: avoid duplicates
+            ops.push({ updateOne: { filter: { date: dt }, update: { $set: { date: dt, occasion: occasion || '', groupId, createdBy: req.user._id } }, upsert: true } });
+        }
+
+        if (ops.length > 0) {
+            await NonOperation.bulkWrite(ops);
+        }
+
+        // Single announcement for the span (include groupId token)
+        const fmtStart = start.toLocaleDateString();
+        const fmtEnd = end.toLocaleDateString();
+        const content = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '') + ` [gid:${groupId}]`;
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+        await announcement.save();
+
+        res.status(200).json({ message: `Marked ${datesToCreate.length} Sundays as non-operational.` });
+    } catch (error) {
+        console.error('Error creating bulk non-operational dates:', error);
+        res.status(500).json({ message: 'Error marking bulk dates.' });
+    }
+});
+
+/**
+ * DELETE /api/calendar/nonop/:id
+ * Removes a non-operation entry (re-opens service on that Sunday) and announces the change.
+ */
+app.delete('/api/calendar/nonop/:id', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const doc = await NonOperation.findByIdAndDelete(id);
+        if (!doc) return res.status(404).json({ message: 'Non-operation date not found.' });
+
+        // Remove any scheduled/global announcements tied to this groupId (if present)
+        if (doc.groupId) {
+            try {
+                await Message.deleteMany({ conversationId: 'global', content: new RegExp(`\\[gid:${doc.groupId}\\]`) });
+            } catch (delErr) {
+                console.error('Error deleting related announcements:', delErr);
+            }
+        } else {
+            // Fallback: remove messages containing the date string
+            try {
+                const dateToken = new Date(doc.date).toLocaleDateString();
+                await Message.deleteMany({ conversationId: 'global', content: new RegExp(dateToken) });
+            } catch (delErr) {
+                console.error('Error deleting date-related announcements:', delErr);
+            }
+        }
+
+        const content = `Service Update: Bus WILL run on ${new Date(doc.date).toLocaleDateString()} (previously marked non-operational).`;
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+        await announcement.save();
+
+        res.status(200).json({ message: 'Non-operation date removed.' });
+    } catch (error) {
+        console.error('Error deleting non-operation date:', error);
+        res.status(500).json({ message: 'Error removing date.' });
+    }
+});
+
+
 /**
  * GET /api/notifications
  * Fetches recent, unread notifications.
@@ -1028,3 +1241,49 @@ app.delete('/api/messages/:id', authenticateToken, authorize(['admin', 'secretar
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
+// -----------------------------------------------------
+// Scheduler: create global announcements starting two months before non-op dates
+// Runs at startup and once every 24 hours
+// -----------------------------------------------------
+async function createAdvanceAnnouncements() {
+    try {
+        const now = new Date();
+        const twoMonthsMs = 60 * 24 * 60 * 60 * 1000; // 60 days
+        const windowEnd = new Date(Date.now() + twoMonthsMs);
+
+        // Fetch NonOperation entries whose date is between today and two months from now
+        const upcoming = await NonOperation.find({ date: { $gte: now, $lte: windowEnd } });
+
+        for (const n of upcoming) {
+            const gid = n.groupId || '';
+            // Check if an announcement already exists for this groupId
+            let exists = false;
+            if (gid) {
+                exists = await Message.exists({ conversationId: 'global', content: new RegExp(`\\[gid:${gid}\\]`) });
+            }
+            if (!exists) {
+                // Double-check by date fallback (in case groupId missing)
+                if (!gid) {
+                    const dateToken = new Date(n.date).toLocaleDateString();
+                    exists = await Message.exists({ conversationId: 'global', content: new RegExp(dateToken) });
+                }
+            }
+
+            if (!exists) {
+                const fmt = new Date(n.date).toLocaleDateString();
+                const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '') + (gid ? ` [gid:${gid}]` : '');
+                const announcement = new Message({ conversationId: 'global', senderId: null, senderName: 'System', content, timestamp: new Date(), isRead: false });
+                await announcement.save();
+                console.log('Scheduled announcement created for non-op date:', fmt, gid || 'no-gid');
+            }
+        }
+
+    } catch (err) {
+        console.error('Error creating advance announcements:', err);
+    }
+}
+
+// Run once immediately, then every 24 hours
+createAdvanceAnnouncements();
+setInterval(createAdvanceAnnouncements, 24 * 60 * 60 * 1000);

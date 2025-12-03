@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RouteKeeper - Calendar</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f7f9f8; }
+    .month-section { margin-bottom: 1.25rem; }
+    .month-title { font-weight: 600; margin-bottom: .5rem; }
+    .carousel-row { display:flex; gap: .5rem; overflow-x: auto; padding: .5rem 0; }
+    .sunday-square {
+      min-width: 64px;
+      height: 64px;
+      border-radius: 8px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      cursor: pointer;
+      user-select: none;
+      transition: transform .12s ease, box-shadow .12s ease;
+      flex-shrink: 0;
+    }
+    .sunday-square:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+    .sunday-normal { background: #eaf6ea; color: #115e19; }
+    .sunday-nonop { background: #fdecea; color: #7a160b; }
+    .sunday-date { font-weight:700; font-size:1.1rem; }
+    .sunday-month { font-size: .75rem; opacity: .85; }
+
+    /* Controls */
+    .controls { display:flex; gap:.5rem; align-items:center; margin-bottom:1rem; }
+
+    /* Modal content small tweaks */
+    .modal-header h5 { margin:0; }
+
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="admin-dashboard.html">RouteKeeper Calendar</a>
+    <div>
+      <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Service Calendar (Next 6 Months)</h2>
+    <div class="text-muted small">Admins & Secretaries only</div>
+  </div>
+
+  <div class="controls">
+    <div class="input-group">
+      <label class="input-group-text">Months</label>
+      <select id="months-select" class="form-select">
+        <option value="3">3</option>
+        <option value="6" selected>6</option>
+        <option value="9">9</option>
+      </select>
+    </div>
+    <button id="refresh-btn" class="btn btn-outline-secondary">Refresh</button>
+    <button id="bulk-btn" class="btn btn-outline-danger">Bulk Mark (Sundays in Span)</button>
+  </div>
+
+  <div id="calendar-container"></div>
+
+</main>
+
+<!-- Single date modal -->
+<div class="modal fade" id="dateModal" tabindex="-1">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Date Options</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="selectedDateLabel" class="mb-2 fw-semibold"></div>
+        <div class="mb-2">
+          <label class="form-label">Occasion (optional)</label>
+          <input id="occasion-input" class="form-control" placeholder="e.g. Christmas Service" />
+        </div>
+        <div id="date-actions" class="d-grid gap-2">
+          <button id="mark-nonop" class="btn btn-danger">Mark as Non-Operational</button>
+          <button id="clear-nonop" class="btn btn-outline-secondary">Clear Non-Operational</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk modal -->
+<div class="modal fade" id="bulkModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Bulk Mark Sundays</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Start Date</label>
+          <input id="bulk-start" type="date" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">End Date</label>
+          <input id="bulk-end" type="date" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Occasion (optional)</label>
+          <input id="bulk-occasion" class="form-control" placeholder="e.g. Summer Break" />
+        </div>
+        <div class="d-grid gap-2">
+          <button id="bulk-submit" class="btn btn-danger">Mark All Sundays in Range</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="text-center text-muted py-4">
+  <small>&copy; Church and Family Media</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Access control
+  if (!['admin','secretary'].includes(localStorage.getItem('role'))) {
+    window.location.href = '/index.html';
+  }
+
+  function logout() { localStorage.clear(); window.location.href = '/index.html'; }
+
+  async function fetchWithAuth(url, options = {}) {
+    const token = localStorage.getItem('token');
+    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const resp = await fetch(url, {...options, headers});
+    if (resp.status === 401 || resp.status === 403) logout();
+    return resp;
+  }
+
+  const calendarContainer = document.getElementById('calendar-container');
+  const monthsSelect = document.getElementById('months-select');
+  const refreshBtn = document.getElementById('refresh-btn');
+  const bulkBtn = document.getElementById('bulk-btn');
+  const dateModal = new bootstrap.Modal(document.getElementById('dateModal'));
+  const bulkModal = new bootstrap.Modal(document.getElementById('bulkModal'));
+
+  let currentData = null;
+  let selectedDateObj = null; // {dateISO, isNonOp, id, occasion}
+
+  async function loadCalendar() {
+    const months = monthsSelect.value || '6';
+    const resp = await fetchWithAuth(`/api/calendar/sundays?months=${months}`);
+    if (!resp.ok) {
+      calendarContainer.innerHTML = '<div class="alert alert-danger">Error loading calendar.</div>';
+      return;
+    }
+    const data = await resp.json();
+    currentData = data;
+    renderCalendar(data);
+  }
+
+  function renderCalendar(months) {
+    calendarContainer.innerHTML = '';
+    months.forEach(m => {
+      const monthSection = document.createElement('section');
+      monthSection.className = 'month-section';
+      const monthTitle = document.createElement('div');
+      monthTitle.className = 'month-title';
+      monthTitle.textContent = `${new Date(m.year, m.month, 1).toLocaleString('default', { month: 'long' })} ${m.year}`;
+      monthSection.appendChild(monthTitle);
+
+      const row = document.createElement('div');
+      row.className = 'carousel-row';
+
+      m.sundays.forEach(s => {
+        const square = document.createElement('div');
+        square.className = 'sunday-square ' + (s.isNonOp ? 'sunday-nonop' : 'sunday-normal');
+        square.dataset.date = s.date;
+        square.dataset.id = s.id || '';
+        square.dataset.occasion = s.occasion || '';
+
+        const mon = document.createElement('div');
+        mon.className = 'sunday-month';
+        mon.textContent = s.monthAbbr.toUpperCase();
+        const day = document.createElement('div');
+        day.className = 'sunday-date';
+        day.textContent = s.day;
+
+        square.appendChild(mon);
+        square.appendChild(day);
+
+        square.addEventListener('click', () => onSelectDate(square));
+
+        row.appendChild(square);
+      });
+
+      monthSection.appendChild(row);
+      calendarContainer.appendChild(monthSection);
+    });
+  }
+
+  function onSelectDate(el) {
+    const dateISO = el.dataset.date;
+    const id = el.dataset.id || null;
+    const occasion = el.dataset.occasion || '';
+    selectedDateObj = { dateISO, id, occasion, isNonOp: el.classList.contains('sunday-nonop') };
+    document.getElementById('selectedDateLabel').textContent = new Date(dateISO).toLocaleDateString();
+    document.getElementById('occasion-input').value = occasion;
+    // show/hide clear button depending on state
+    document.getElementById('clear-nonop').style.display = selectedDateObj.isNonOp ? 'block' : 'none';
+    dateModal.show();
+  }
+
+  document.getElementById('mark-nonop').addEventListener('click', async () => {
+    const occasion = document.getElementById('occasion-input').value.trim();
+    const payload = { date: selectedDateObj.dateISO.slice(0,10), occasion };
+    const resp = await fetchWithAuth('/api/calendar/nonop', { method: 'POST', body: JSON.stringify(payload) });
+    const json = await resp.json();
+    if (resp.ok) {
+      dateModal.hide();
+      await loadCalendar();
+    } else {
+      alert(json.message || 'Failed to mark date.');
+    }
+  });
+
+  document.getElementById('clear-nonop').addEventListener('click', async () => {
+    if (!selectedDateObj.id) {
+      // find the id from currentData
+      for (const m of currentData) {
+        for (const s of m.sundays) {
+          if (s.date === selectedDateObj.dateISO && s.isNonOp) selectedDateObj.id = s.id;
+        }
+      }
+    }
+    if (!selectedDateObj.id) return alert('No non-operational record found.');
+
+    const resp = await fetchWithAuth(`/api/calendar/nonop/${selectedDateObj.id}`, { method: 'DELETE' });
+    const json = await resp.json();
+    if (resp.ok) {
+      dateModal.hide();
+      await loadCalendar();
+    } else {
+      alert(json.message || 'Failed to clear non-operational.');
+    }
+  });
+
+  refreshBtn.addEventListener('click', loadCalendar);
+  bulkBtn.addEventListener('click', () => bulkModal.show());
+
+  document.getElementById('bulk-submit').addEventListener('click', async () => {
+    const start = document.getElementById('bulk-start').value;
+    const end = document.getElementById('bulk-end').value;
+    const occasion = document.getElementById('bulk-occasion').value.trim();
+    if (!start || !end) return alert('Please select start and end dates.');
+    const resp = await fetchWithAuth('/api/calendar/nonop/bulk', { method: 'POST', body: JSON.stringify({ startDate: start, endDate: end, occasion }) });
+    const json = await resp.json();
+    if (resp.ok) {
+      bulkModal.hide();
+      await loadCalendar();
+      alert(json.message || 'Bulk operation completed.');
+    } else {
+      alert(json.message || 'Bulk operation failed.');
+    }
+  });
+
+  // Initial load
+  loadCalendar();
+
+</script>
+</body>
+</html>
