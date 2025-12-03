@@ -100,6 +100,7 @@ const MessageSchema = new mongoose.Schema({
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     senderName: { type: String, required: true },
     content: { type: String, required: true },
+    groupId: { type: String }, // optional group id for announcements to track bulk operations
     timestamp: { type: Date, default: Date.now },
     isRead: { type: Boolean, default: false } // To track if a message has been seen by the secretary
 });
@@ -983,9 +984,9 @@ app.post('/api/calendar/nonop', authenticateToken, authorize(['admin', 'secretar
         }
 
         // Create a single global message to notify riders (include gid token to avoid duplicates)
-        const formatted = d.toLocaleDateString();
-        const content = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '') + ` [gid:${groupId}]`;
-        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+    const formatted = d.toLocaleDateString();
+    const content = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '');
+    const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, groupId, timestamp: new Date(), isRead: false });
         await announcement.save();
 
         res.status(200).json({ message: 'Date marked as non-operational.' });
@@ -1033,8 +1034,8 @@ app.post('/api/calendar/nonop/bulk', authenticateToken, authorize(['admin', 'sec
         // Single announcement for the span (include groupId token)
         const fmtStart = start.toLocaleDateString();
         const fmtEnd = end.toLocaleDateString();
-        const content = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '') + ` [gid:${groupId}]`;
-        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+    const content = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '');
+    const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, groupId, timestamp: new Date(), isRead: false });
         await announcement.save();
 
         res.status(200).json({ message: `Marked ${datesToCreate.length} Sundays as non-operational.` });
@@ -1057,9 +1058,9 @@ app.delete('/api/calendar/nonop/:id', authenticateToken, authorize(['admin', 'se
         // Remove any scheduled/global announcements tied to this groupId (if present)
         if (doc.groupId) {
             try {
-                await Message.deleteMany({ conversationId: 'global', content: new RegExp(`\\[gid:${doc.groupId}\\]`) });
+                await Message.deleteMany({ conversationId: 'global', groupId: doc.groupId });
             } catch (delErr) {
-                console.error('Error deleting related announcements:', delErr);
+                console.error('Error deleting related announcements by groupId:', delErr);
             }
         } else {
             // Fallback: remove messages containing the date string
@@ -1272,8 +1273,8 @@ async function createAdvanceAnnouncements() {
 
             if (!exists) {
                 const fmt = new Date(n.date).toLocaleDateString();
-                const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '') + (gid ? ` [gid:${gid}]` : '');
-                const announcement = new Message({ conversationId: 'global', senderId: null, senderName: 'System', content, timestamp: new Date(), isRead: false });
+                const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '');
+                const announcement = new Message({ conversationId: 'global', senderId: null, senderName: 'System', content, groupId: gid || undefined, timestamp: new Date(), isRead: false });
                 await announcement.save();
                 console.log('Scheduled announcement created for non-op date:', fmt, gid || 'no-gid');
             }

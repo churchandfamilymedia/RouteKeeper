@@ -44,21 +44,11 @@
 
 <main class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Service Calendar (Next 6 Months)</h2>
-    <div class="text-muted small">Admins & Secretaries only</div>
+    <h2>Service Calendar</h2>
   </div>
 
   <div class="controls">
-    <div class="input-group">
-      <label class="input-group-text">Months</label>
-      <select id="months-select" class="form-select">
-        <option value="3">3</option>
-        <option value="6" selected>6</option>
-        <option value="9">9</option>
-      </select>
-    </div>
-    <button id="refresh-btn" class="btn btn-outline-secondary">Refresh</button>
-    <button id="bulk-btn" class="btn btn-outline-danger">Bulk Mark (Sundays in Span)</button>
+    <button id="bulk-btn" class="btn btn-outline-danger">Bulk Edit</button>
   </div>
 
   <div id="calendar-container"></div>
@@ -192,8 +182,6 @@
   }
 
   const calendarContainer = document.getElementById('calendar-container');
-  const monthsSelect = document.getElementById('months-select');
-  const refreshBtn = document.getElementById('refresh-btn');
   const bulkBtn = document.getElementById('bulk-btn');
   const dateModal = new bootstrap.Modal(document.getElementById('dateModal'));
   const bulkModal = new bootstrap.Modal(document.getElementById('bulkModal'));
@@ -202,7 +190,7 @@
   let selectedDateObj = null; // {dateISO, isNonOp, id, occasion}
 
   async function loadCalendar() {
-    const months = monthsSelect.value || '6';
+    const months = 9; // always display 9 months
     const resp = await fetchWithAuth(`/api/calendar/sundays?months=${months}`);
     if (!resp.ok) {
       calendarContainer.innerHTML = '<div class="alert alert-danger">Error loading calendar.</div>';
@@ -299,7 +287,6 @@
     }
   });
 
-  refreshBtn.addEventListener('click', loadCalendar);
   bulkBtn.addEventListener('click', () => bulkModal.show());
 
   document.getElementById('bulk-submit').addEventListener('click', async () => {
