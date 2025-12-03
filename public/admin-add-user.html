@@ -134,10 +134,12 @@
     // 1. SECURITY & UTILITY
     // ---------------------------------------------------------
     
-    // Simple check to ensure only admin has access
+    // Require a valid token and admin role to access this page
+    const token = localStorage.getItem('token');
     const role = localStorage.getItem('role');
-    if (role !== 'admin') {
-    window.location.href = '/index.html';
+    if (!token || role !== 'admin') {
+        localStorage.clear();
+        window.location.href = '/index.html';
     }
 
     function logout() {
@@ -252,9 +254,19 @@
             let response;
             if (role === 'tempRider') {
                 // Create a roster-only TempRider entry (no account)
+                // This endpoint requires an Authorization token (admin only)
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    statusMessage.classList.remove('d-none');
+                    statusMessage.classList.remove('alert-success');
+                    statusMessage.classList.add('alert-danger');
+                    statusMessage.innerText = 'Error: You must be signed in to create Temp Riders.';
+                    return;
+                }
+
                 response = await fetch('/api/temp-riders', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ parentName: userData.parentName, phoneNumber: userData.phoneNumber, address: userData.address, students: userData.students })
                 });
             } else {
