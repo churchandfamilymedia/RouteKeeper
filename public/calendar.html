@@ -71,6 +71,7 @@
         </div>
         <div id="date-actions" class="d-grid gap-2">
           <button id="mark-nonop" class="btn btn-danger">Mark as Non-Operational</button>
+          <button id="reactivate-nonop" class="btn btn-outline-secondary" style="display:none;">Reactivate Service</button>
         </div>
       </div>
     </div>
@@ -247,6 +248,11 @@
     selectedDateObj = { dateISO, id, occasion, isNonOp: el.classList.contains('sunday-nonop') };
     document.getElementById('selectedDateLabel').textContent = new Date(dateISO).toLocaleDateString();
     document.getElementById('occasion-input').value = occasion;
+    // Show reactivate button only when the date is currently non-operational
+    const reactBtn = document.getElementById('reactivate-nonop');
+    if (reactBtn) {
+      reactBtn.style.display = selectedDateObj.isNonOp ? 'block' : 'none';
+    }
     dateModal.show();
   }
 
@@ -260,6 +266,28 @@
       await loadCalendar();
     } else {
       alert(json.message || 'Failed to mark date.');
+    }
+  });
+
+  // Reactivate (undo non-operation) handler
+  document.getElementById('reactivate-nonop').addEventListener('click', async () => {
+    if (!selectedDateObj.id) {
+      // find the id from currentData
+      for (const m of currentData) {
+        for (const s of m.sundays) {
+          if (s.date === selectedDateObj.dateISO && s.isNonOp) selectedDateObj.id = s.id;
+        }
+      }
+    }
+    if (!selectedDateObj.id) return; // nothing to reactivate
+
+    try {
+      const resp = await fetchWithAuth(`/api/calendar/nonop/${selectedDateObj.id}/reactivate`, { method: 'POST' });
+      // Per UX choice, silently ignore failure to reactivate and simply refresh the calendar
+      dateModal.hide();
+      await loadCalendar();
+    } catch (err) {
+      dateModal.hide();
     }
   });
 

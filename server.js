@@ -926,7 +926,8 @@ app.get('/api/calendar/sundays', authenticateToken, authorize(['admin', 'secreta
         const lastSundays = lastMonth.sundays;
         const endDate = lastSundays.length ? lastSundays[lastSundays.length - 1] : new Date();
 
-        const nonOps = await NonOperation.find({ date: { $gte: startDate, $lte: endDate } });
+    // Only consider active non-operation entries
+    const nonOps = await NonOperation.find({ date: { $gte: startDate, $lte: endDate }, isActive: true });
         const nonOpMap = {};
         nonOps.forEach(n => {
             const key = new Date(n.date).toISOString().slice(0,10);
@@ -1054,6 +1055,54 @@ app.delete('/api/calendar/nonop/:id', authenticateToken, authorize(['admin', 'se
     // Non-operational days are not clearable via the API.
     // This endpoint is intentionally disabled to prevent accidental reopening of service days.
     return res.status(403).json({ message: 'Non-operational days cannot be removed.' });
+});
+
+/**
+ * POST /api/calendar/nonop/:id/reactivate
+ * Allows admin/secretary to reactivate service for a previously marked non-operational date.
+ */
+app.post('/api/calendar/nonop/:id/reactivate', authenticateToken, authorize(['admin', 'secretary']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const doc = await NonOperation.findById(id);
+        if (!doc) return res.status(404).json({ message: 'Non-operation date not found.' });
+
+        // If already inactive, nothing to do
+        if (!doc.isActive) {
+            return res.status(200).json({ message: 'Non-operation entry already inactive.' });
+        }
+
+        // Mark as inactive (reactivate service)
+        doc.isActive = false;
+        await doc.save();
+
+        // Remove any scheduled/global announcements tied to this groupId (if present)
+        if (doc.groupId) {
+            try {
+                await Message.deleteMany({ conversationId: 'global', groupId: doc.groupId });
+            } catch (delErr) {
+                console.error('Error deleting related announcements by groupId during reactivate:', delErr);
+            }
+        } else {
+            // Fallback: remove messages containing the date string
+            try {
+                const dateToken = new Date(doc.date).toLocaleDateString();
+                await Message.deleteMany({ conversationId: 'global', content: new RegExp(dateToken) });
+            } catch (delErr) {
+                console.error('Error deleting date-related announcements during reactivate:', delErr);
+            }
+        }
+
+        // Announce that service will run on that date again
+        const content = `Service Update: Bus WILL run on ${new Date(doc.date).toLocaleDateString()} (previously marked non-operational).`;
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, timestamp: new Date(), isRead: false });
+        await announcement.save();
+
+        res.status(200).json({ message: 'Service reactivated for this date.' });
+    } catch (error) {
+        console.error('Error reactivating non-operation date:', error);
+        res.status(500).json({ message: 'Error reactivating date.' });
+    }
 });
 
 
