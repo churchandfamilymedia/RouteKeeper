@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>RouteKeeper - Calendar</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <style>
-    body { background: #f7f9f8; }
+    body { background-color: #f0f2f5; }
+    .container { max-width: 900px; }
     .month-section { margin-bottom: 1.25rem; }
     .month-title { font-weight: 600; margin-bottom: .5rem; }
     .carousel-row { display:flex; gap: .5rem; overflow-x: auto; padding: .5rem 0; }
@@ -39,8 +41,14 @@
   </style>
 </head>
 <body>
-<!-- Universal navbar placeholder: renders admin navbar when role=admin, otherwise a simple header -->
-<div id="navbar-placeholder"></div>
+<!-- Main navbar (keeps layout consistent with other pages). Admin navbar will be injected into #admin-nav-container when role=admin -->
+<nav id="main-navbar" class="navbar navbar-dark bg-dark mb-3">
+  <div class="container-fluid container">
+    <span class="navbar-brand mb-0 h1">RouteKeeper</span>
+    <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+  </div>
+</nav>
+<div id="admin-nav-container"></div>
 
 <main class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -113,55 +121,39 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  // Render navbar depending on role
+  // Render admin navbar when logged in as admin, otherwise keep the default main navbar
   (function renderNavbar() {
     const role = localStorage.getItem('role');
-    const container = document.getElementById('navbar-placeholder');
     if (role === 'admin') {
-      container.innerHTML = `
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container">
-        <a class="navbar-brand" href="admin-dashboard.html">
-            <i class="bi bi-shield-lock-fill"></i> RouteKeeper Admin
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#calendarNavbar">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="calendarNavbar">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link" href="admin-dashboard.html">Dashboard</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="admin-add-user.html">Add User</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="admin-manage-users.html">Manage Users</a>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">App Views</a>
-                    <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item" href="secretary.html">Secretary View</a></li>
-                        <li><a class="dropdown-item" href="driver.html">Driver View</a></li>
+      // Remove the simple main navbar and render the admin navbar into its container
+      const mainNav = document.getElementById('main-navbar');
+      if (mainNav) mainNav.remove();
+      const adminNavHtml = `
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="admin-dashboard.html"><i class="bi bi-shield-lock-fill"></i> RouteKeeper Admin</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#calendarNavbar">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="calendarNavbar">
+                    <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                        <li class="nav-item"><a class="nav-link" href="admin-dashboard.html">Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link" href="admin-add-user.html">Add User</a></li>
+                        <li class="nav-item"><a class="nav-link" href="admin-manage-users.html">Manage Users</a></li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">App Views</a>
+                            <ul class="dropdown-menu dropdown-menu-dark">
+                                <li><a class="dropdown-item" href="secretary.html">Secretary View</a></li>
+                                <li><a class="dropdown-item" href="driver.html">Driver View</a></li>
+                            </ul>
+                        </li>
                     </ul>
-                </li>
-            </ul>
-            <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
-        </div>
-    </div>
-</nav>
+                    <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </nav>
       `;
-    } else {
-      container.innerHTML = `
-<nav class="navbar navbar-dark bg-dark">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="/index.html">RouteKeeper</a>
-    <div>
-      <button class="btn btn-sm btn-outline-light" onclick="logout()">Logout</button>
-    </div>
-  </div>
-</nav>
-      `;
+      document.getElementById('admin-nav-container').innerHTML = adminNavHtml;
     }
   })();
 
