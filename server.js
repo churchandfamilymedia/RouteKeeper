@@ -955,25 +955,22 @@ app.post('/api/calendar/nonop', authenticateToken, authorize(['admin', 'secretar
         const formatted = d.toLocaleDateString();
         const suspensionContent = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '');
 
-        // Remove any prior 'Service Update' (will run) messages for this date
+        // Remove ALL prior announcements for this date (both "will run" and "will NOT run") to avoid duplicates
         try {
             await Message.deleteMany({
                 conversationId: 'global',
                 $or: [
-                    { groupId: groupId },
-                    { content: new RegExp(`^Service Update: Bus WILL run on .*${escapeRegExp(formatted)}.*$`) }
+                    { groupId: groupId },  // By groupId
+                    { content: new RegExp(`.*${escapeRegExp(formatted)}.*`) }  // By date anywhere in content
                 ]
             });
         } catch (delErr) {
-            console.error('Error deleting conflicting Service Update announcements:', delErr);
+            console.error('Error deleting conflicting announcements:', delErr);
         }
 
-        // Only create suspension announcement if one does not already exist for this groupId or date
-        const existsMsg = await Message.exists({ conversationId: 'global', $or: [{ groupId }, { content: new RegExp(`^Service Suspension: Bus will NOT run on .*${escapeRegExp(formatted)}.*$`) }] });
-        if (!existsMsg) {
-            const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionContent, groupId, timestamp: new Date(), isRead: false });
-            await announcement.save();
-        }
+        // Create fresh suspension announcement (dedupe guaranteed by deleteMany above)
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionContent, groupId, timestamp: new Date(), isRead: false });
+        await announcement.save();
 
         res.status(200).json({ message: 'Date marked as non-operational.' });
     } catch (error) {
@@ -1022,23 +1019,22 @@ app.post('/api/calendar/nonop/bulk', authenticateToken, authorize(['admin', 'sec
         const fmtEnd = end.toLocaleDateString();
         const suspensionSpanContent = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '');
 
+        // Remove ALL prior announcements for dates in this span to avoid duplicates
         try {
             await Message.deleteMany({
                 conversationId: 'global',
                 $or: [
-                    { groupId },
-                    { content: new RegExp(`^Service Update: Bus WILL run on .*${escapeRegExp(fmtStart)}.*|${escapeRegExp(fmtEnd)}.*$`) }
+                    { groupId },  // By groupId (covers all Sundays in the span)
+                    { content: new RegExp(`.*${escapeRegExp(fmtStart)}.*|.*${escapeRegExp(fmtEnd)}.*`) }  // By date strings anywhere in content
                 ]
             });
         } catch (delErr) {
-            console.error('Error deleting conflicting Service Update announcements for bulk:', delErr);
+            console.error('Error deleting conflicting announcements for bulk:', delErr);
         }
 
-        const existsBulk = await Message.exists({ conversationId: 'global', $or: [{ groupId }, { content: new RegExp(`Service Suspension: Bus will NOT run from .*${escapeRegExp(fmtStart)}.*${escapeRegExp(fmtEnd)}.*`) }] });
-        if (!existsBulk) {
-            const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionSpanContent, groupId, timestamp: new Date(), isRead: false });
-            await announcement.save();
-        }
+        // Create fresh announcement for the span (dedupe guaranteed by deleteMany above)
+        const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionSpanContent, groupId, timestamp: new Date(), isRead: false });
+        await announcement.save();
 
         res.status(200).json({ message: `Marked ${datesToCreate.length} Sundays as non-operational.` });
     } catch (error) {
@@ -1313,27 +1309,26 @@ async function createAdvanceAnnouncements() {
             const gid = n.groupId;
             const fmt = new Date(n.date).toLocaleDateString();
             
-            // Check if an announcement already exists for this groupId or date
-            let exists = false;
-            
-            if (gid) {
-                // Check by groupId first (most reliable)
-                exists = await Message.exists({ conversationId: 'global', groupId: gid });
-            }
-            
-            if (!exists) {
-                // Fallback: check by content pattern matching the suspension message for this date
-                exists = await Message.exists({ conversationId: 'global', content: new RegExp(`^Service Suspension: Bus will NOT run on .*${escapeRegExp(fmt)}.*$`) });
+            // Aggressively delete ALL existing announcements for this date to ensure no duplicates
+            try {
+                await Message.deleteMany({
+                    conversationId: 'global',
+                    $or: [
+                        { groupId: gid },  // By groupId
+                        { content: new RegExp(`.*${escapeRegExp(fmt)}.*`) }  // By date anywhere in content
+                    ]
+                });
+            } catch (delErr) {
+                console.error('Error deleting old announcements during scheduled create:', delErr);
             }
 
-            if (!exists) {
-                const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '');
-                const messageData = { conversationId: 'global', senderName: 'System', content, timestamp: new Date(), isRead: false };
-                if (gid) messageData.groupId = gid;
-                const announcement = new Message(messageData);
-                await announcement.save();
-                console.log('Scheduled announcement created for non-op date:', fmt, gid || 'no-gid');
-            }
+            // Create fresh announcement (dedupe guaranteed by deleteMany above)
+            const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '');
+            const messageData = { conversationId: 'global', senderName: 'System', content, timestamp: new Date(), isRead: false };
+            if (gid) messageData.groupId = gid;
+            const announcement = new Message(messageData);
+            await announcement.save();
+            console.log('Scheduled announcement created for non-op date:', fmt, gid || 'no-gid');
         }
 
     } catch (err) {
