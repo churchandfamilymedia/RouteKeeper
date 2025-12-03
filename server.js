@@ -97,7 +97,8 @@ const Exclusion = mongoose.model('Exclusion', ExclusionSchema);
 // --- Message Model
 const MessageSchema = new mongoose.Schema({
     conversationId: { type: String, required: true, index: true }, // Will be rider's userId or 'global'
-    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // senderId is optional to allow system-generated messages (scheduler) to be created without a user reference
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     senderName: { type: String, required: true },
     content: { type: String, required: true },
     groupId: { type: String }, // optional group id for announcements to track bulk operations
@@ -1246,7 +1247,9 @@ async function createAdvanceAnnouncements() {
             if (!exists) {
                 const fmt = new Date(n.date).toLocaleDateString();
                 const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '');
-                const announcement = new Message({ conversationId: 'global', senderId: null, senderName: 'System', content, groupId: gid || undefined, timestamp: new Date(), isRead: false });
+                const messageData = { conversationId: 'global', senderName: 'System', content, timestamp: new Date(), isRead: false };
+                if (gid) messageData.groupId = gid;
+                const announcement = new Message(messageData);
                 await announcement.save();
                 console.log('Scheduled announcement created for non-op date:', fmt, gid || 'no-gid');
             }
