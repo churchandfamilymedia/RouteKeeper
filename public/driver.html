@@ -85,13 +85,6 @@
         <h5 class="text-muted" id="dateDisplay">Loading Date...</h5> 
     </div>
 
-    <!-- Presence legend: outline = coming, solid = on bus -->
-    <div class="presence-legend text-end mb-3">
-        <small class="text-muted">Legend:</small>
-        <span class="badge kid-badge outline ms-2">Coming</span>
-        <span class="badge kid-badge solid ms-1">On Bus</span>
-    </div>
-
     <!-- Notifications Section -->
     <div id="notifications-container" class="mb-4">
         <!-- Notifications will be injected here -->
@@ -116,6 +109,12 @@
         <div class="d-flex align-items-center">
             <i class="bi bi-bus-front-fill fs-4 me-2 text-primary"></i>
             <h4 class="mb-0 text-secondary">Active Route Stops</h4>
+        </div>
+        <!-- Presence legend: outline = coming, solid = on bus -->
+        <div class="presence-legend text-end">
+            <small class="text-muted">Legend:</small>
+            <span class="badge kid-badge outline ms-2">Coming</span>
+            <span class="badge kid-badge solid ms-1">On Bus</span>
         </div>
         <button class="btn btn-primary btn-sm" onclick="loadRoute()">Refresh List</button>
     </div>
