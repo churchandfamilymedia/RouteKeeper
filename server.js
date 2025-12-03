@@ -1184,11 +1184,42 @@ app.post('/api/messages', authenticateToken, async (req, res) => { // Added auth
 /**
  * GET /api/messages/:conversationId
  * Fetches all messages for a specific conversation (a rider's chat or global)
+ * For global messages, non-op announcements are sorted by date (nearest first), then regular announcements by timestamp
  */
 app.get('/api/messages/:conversationId', authenticateToken, async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const messages = await Message.find({ conversationId }).sort({ timestamp: 1 }); // Sort oldest to newest
+        const messages = await Message.find({ conversationId });
+
+        if (conversationId === 'global') {
+            // For global messages, sort non-op announcements (with groupId or "Service Suspension" content) by date (nearest first)
+            // Then regular announcements by timestamp (newest first)
+            messages.sort((a, b) => {
+                const aIsNonOp = Boolean(a.groupId) || (typeof a.content === 'string' && a.content.startsWith('Service Suspension'));
+                const bIsNonOp = Boolean(b.groupId) || (typeof b.content === 'string' && b.content.startsWith('Service Suspension'));
+
+                // If both are non-op or both are regular, maintain their relative order
+                if (aIsNonOp === bIsNonOp) {
+                    // Both non-op: sort by date (nearest first) — extract date from content
+                    if (aIsNonOp) {
+                        const aDateMatch = a.content.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+                        const bDateMatch = b.content.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+                        if (aDateMatch && bDateMatch) {
+                            return new Date(aDateMatch[1]) - new Date(bDateMatch[1]); // Nearest first
+                        }
+                    }
+                    // Both regular: sort by timestamp (newest first)
+                    return new Date(b.timestamp) - new Date(a.timestamp);
+                }
+
+                // Non-op messages come first
+                return aIsNonOp ? -1 : 1;
+            });
+        } else {
+            // For rider conversations, sort oldest to newest
+            messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        }
+
         res.status(200).json(messages);
     } catch (error) {
         console.error('Error fetching messages:', error);

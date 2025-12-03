@@ -347,12 +347,35 @@
                 const oneWeekAgo = new Date();
                 oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
+                // Sort messages: non-op announcements (with groupId or "Service Suspension" content) by date (nearest first), then regular announcements by timestamp (newest first)
+                const sortedMessages = globalMessages.sort((a, b) => {
+                    const aIsNonOp = Boolean(a.groupId) || (typeof a.content === 'string' && a.content.startsWith('Service Suspension'));
+                    const bIsNonOp = Boolean(b.groupId) || (typeof b.content === 'string' && b.content.startsWith('Service Suspension'));
+
+                    // If both are non-op or both are regular, maintain their relative order
+                    if (aIsNonOp === bIsNonOp) {
+                        // Both non-op: sort by date (nearest first) — extract date from content
+                        if (aIsNonOp) {
+                            const aDateMatch = a.content.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+                            const bDateMatch = b.content.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+                            if (aDateMatch && bDateMatch) {
+                                return new Date(aDateMatch[1]) - new Date(bDateMatch[1]); // Nearest first
+                            }
+                        }
+                        // Both regular: sort by timestamp (newest first)
+                        return new Date(b.timestamp) - new Date(a.timestamp);
+                    }
+
+                    // Non-op messages come first
+                    return aIsNonOp ? -1 : 1;
+                });
+
                 broadcastContainer.innerHTML = `
                     <div class="d-flex align-items-center mb-2">
                         <i class="bi bi-megaphone-fill fs-4 me-2 text-primary"></i>
                         <h4 class="mb-0 text-secondary">Broadcast Announcements</h4>
                     </div>
-                ` + globalMessages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map(msg => {
+                ` + sortedMessages.map(msg => {
                     const isNew = new Date(msg.timestamp) > oneWeekAgo;
                     return `
                         <div class="alert alert-info">
