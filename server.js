@@ -1306,26 +1306,27 @@ async function createAdvanceAnnouncements() {
         const twoMonthsMs = 60 * 24 * 60 * 60 * 1000; // 60 days
         const windowEnd = new Date(Date.now() + twoMonthsMs);
 
-        // Fetch NonOperation entries whose date is between today and two months from now
-        const upcoming = await NonOperation.find({ date: { $gte: now, $lte: windowEnd } });
+        // Fetch only ACTIVE NonOperation entries whose date is between today and two months from now
+        const upcoming = await NonOperation.find({ date: { $gte: now, $lte: windowEnd }, isActive: true });
 
         for (const n of upcoming) {
-            const gid = n.groupId || '';
-            // Check if an announcement already exists for this groupId
+            const gid = n.groupId;
+            const fmt = new Date(n.date).toLocaleDateString();
+            
+            // Check if an announcement already exists for this groupId or date
             let exists = false;
+            
             if (gid) {
-                exists = await Message.exists({ conversationId: 'global', content: new RegExp(`\\[gid:${gid}\\]`) });
+                // Check by groupId first (most reliable)
+                exists = await Message.exists({ conversationId: 'global', groupId: gid });
             }
+            
             if (!exists) {
-                // Double-check by date fallback (in case groupId missing)
-                if (!gid) {
-                    const dateToken = new Date(n.date).toLocaleDateString();
-                    exists = await Message.exists({ conversationId: 'global', content: new RegExp(dateToken) });
-                }
+                // Fallback: check by content pattern matching the suspension message for this date
+                exists = await Message.exists({ conversationId: 'global', content: new RegExp(`^Service Suspension: Bus will NOT run on .*${escapeRegExp(fmt)}.*$`) });
             }
 
             if (!exists) {
-                const fmt = new Date(n.date).toLocaleDateString();
                 const content = `Service Suspension: Bus will NOT run on ${fmt}` + (n.occasion ? ` — ${n.occasion}` : '');
                 const messageData = { conversationId: 'global', senderName: 'System', content, timestamp: new Date(), isRead: false };
                 if (gid) messageData.groupId = gid;
