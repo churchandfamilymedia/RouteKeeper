@@ -195,7 +195,7 @@
                         <div class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-1">${user.parentName}</h6>
-                                <small class="text-muted">${user.username} - ${user.email}</small>
+                                <small class="text-muted">${user.username || ''} ${user.email ? ' - ' + user.email : ''}</small>
                             </div>
                             <button class="btn btn-sm btn-outline-danger" onclick="prepareDelete('${user._id}', '${user.parentName}')">
                                 <i class="bi bi-person-x-fill"></i> Deactivate

@@ -140,6 +140,8 @@ const Notification = mongoose.model('Notification', NotificationSchema);
 const Invite = require('./models/Invite');
 // --- Non-Operation Model (calendar)
 const NonOperation = require('./models/NonOperation');
+// --- TempRider Model (roster-only riders)
+const TempRider = require('./models/TempRider');
 
 // -----------------------------------------------------
 // 3. CORE ROUTES & STATIC FILE HANDLERS
@@ -226,6 +228,32 @@ app.post('/api/register', async (req, res) => {
         }
         console.error('Registration error:', error);
         res.status(500).send('Error creating user.');
+    }
+});
+
+
+/**
+ * POST /api/temp-riders
+ * Create a TempRider roster entry (no login/account). Admin-only.
+ */
+app.post('/api/temp-riders', authenticateToken, authorize('admin'), async (req, res) => {
+    try {
+        const { parentName, phoneNumber, address, students } = req.body;
+        if (!parentName) return res.status(400).json({ message: 'Parent name is required.' });
+
+        const temp = new TempRider({
+            parentName,
+            phoneNumber,
+            address,
+            students: Array.isArray(students) ? students : [],
+            createdBy: req.user ? req.user._id : undefined
+        });
+
+        await temp.save();
+        res.status(201).json({ message: 'Temp Rider created successfully.', tempId: temp._id });
+    } catch (error) {
+        console.error('Error creating TempRider:', error);
+        res.status(500).json({ message: 'Error creating Temp Rider.' });
     }
 });
 
@@ -574,12 +602,54 @@ app.get('/api/users', authenticateToken, authorize(['admin', 'secretary', 'drive
     try {
         const { role } = req.query;
         const query = { isDeleted: { $ne: true } };
+        // If caller asked specifically for rider role, include TempRider roster entries
+        if (role === 'rider') {
+            // Fetch normal rider accounts
+            const riderQuery = { ...query, role: 'rider' };
+            const users = await User.find(riderQuery).sort({ parentName: 1 });
+
+            // Fetch non-deleted TempRider roster entries
+            const temps = await TempRider.find({ isDeleted: { $ne: true } }).sort({ parentName: 1 });
+
+            // Map temps to shape similar to User so client can render them the same way
+            const mappedTemps = temps.map(t => ({
+                _id: t._id,
+                parentName: t.parentName,
+                phoneNumber: t.phoneNumber,
+                address: t.address,
+                students: t.students,
+                role: 'rider', // return as rider so client groups them with riders
+                isTemp: true,
+                createdAt: t.createdAt
+            }));
+
+            // Merge users and temps; clients expect arrays of families
+            const merged = users.concat(mappedTemps).sort((a, b) => (a.parentName || '').localeCompare(b.parentName || ''));
+            return res.status(200).json(merged);
+        }
+
+        // Default path: return regular User documents (admins, drivers, secretaries, etc.)
         if (role) {
             query.role = role;
+            const users = await User.find(query).sort({ role: 1, parentName: 1 });
+            return res.status(200).json(users);
         }
-        // If no role is specified, it will find all users that are not deleted.
+
+        // No specific role requested: return all User accounts AND TempRider roster entries
         const users = await User.find(query).sort({ role: 1, parentName: 1 });
-        res.status(200).json(users);
+        const temps = await TempRider.find({ isDeleted: { $ne: true } }).sort({ parentName: 1 });
+        const mappedTemps = temps.map(t => ({
+            _id: t._id,
+            parentName: t.parentName,
+            phoneNumber: t.phoneNumber,
+            address: t.address,
+            students: t.students,
+            role: 'rider',
+            isTemp: true,
+            createdAt: t.createdAt
+        }));
+        const merged = users.concat(mappedTemps);
+        res.status(200).json(merged);
     } catch (error) {
         console.error('Error fetching users by role:', error);
         res.status(500).send('Internal server error.');
@@ -593,11 +663,27 @@ app.get('/api/users', authenticateToken, authorize(['admin', 'secretary', 'drive
 app.get('/api/users/deleted', authenticateToken, authorize('admin'), async (req, res) => {
     try {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        // Include both deleted User accounts and deleted TempRider roster entries
         const deletedUsers = await User.find({
             isDeleted: true,
-            deletionDate: { $gte: thirtyDaysAgo } // Only show users deleted within the last 30 days
+            deletionDate: { $gte: thirtyDaysAgo }
         }).sort({ deletionDate: -1 });
-        res.status(200).json(deletedUsers);
+
+        const deletedTemps = await TempRider.find({
+            isDeleted: true,
+            deletionDate: { $gte: thirtyDaysAgo }
+        }).sort({ deletionDate: -1 });
+
+        // Map temps to similar shape for client
+        const mappedTemps = deletedTemps.map(t => ({
+            _id: t._id,
+            parentName: t.parentName,
+            role: 'rider',
+            isTemp: true,
+            deletionDate: t.deletionDate
+        }));
+
+        res.status(200).json(deletedUsers.concat(mappedTemps));
     } catch (error) {
         console.error('Error fetching deleted users:', error);
         res.status(500).send('Internal server error.');
@@ -617,7 +703,18 @@ app.delete('/api/users/:id', authenticateToken, authorize('admin'), async (req, 
         );
 
         if (!user) {
-            return res.status(404).json({ message: 'User not found.' });
+            // If not a regular User, try to soft-delete a TempRider roster entry
+            const temp = await TempRider.findByIdAndUpdate(
+                req.params.id,
+                { $set: { isDeleted: true, deletionDate: new Date() } },
+                { new: true }
+            );
+
+            if (!temp) {
+                return res.status(404).json({ message: 'User not found.' });
+            }
+
+            return res.status(200).json({ message: `Temp Rider '${temp.parentName}' has been deactivated.` });
         }
 
         res.status(200).json({ message: `User '${user.parentName}' has been deactivated. They can be restored for 30 days.` });
@@ -644,7 +741,18 @@ app.put('/api/users/:id/restore', authenticateToken, authorize('admin'), async (
         );
 
         if (!user) {
-            return res.status(404).json({ message: 'User not found.' });
+            // Try restoring a TempRider roster entry
+            const temp = await TempRider.findByIdAndUpdate(
+                req.params.id,
+                { $set: { isDeleted: false }, $unset: { deletionDate: "" } },
+                { new: true }
+            );
+
+            if (!temp) {
+                return res.status(404).json({ message: 'User not found.' });
+            }
+
+            return res.status(200).json({ message: `Temp Rider '${temp.parentName}' has been restored.` });
         }
 
         res.status(200).json({ message: `User '${user.parentName}' has been successfully restored.` });

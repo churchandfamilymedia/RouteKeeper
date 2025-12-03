@@ -65,6 +65,7 @@
             <select class="form-select" id="role" required onchange="toggleFields()">
                 <option value="" disabled selected>Select Role</option>
                 <option value="rider">Rider (Parent/Family)</option>
+                <option value="tempRider">Temp Rider (Roster only - no account)</option>
                 <option value="driver">Driver</option>
                 <option value="secretary">Secretary</option>
                 <option value="admin">Administrator</option>
@@ -76,19 +77,21 @@
             <input type="text" class="form-control" id="parentName" required>
         </div>
 
-        <div class="mb-3">
-            <label for="username" class="form-label">Username</label>
-            <input type="text" class="form-control" id="username" required>
-        </div>
+        <div id="accountFields">
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username" required>
+            </div>
 
-        <div class="mb-3">
-            <label for="email" class="form-label">Email Address</label>
-            <input type="email" class="form-control" id="email" required>
-        </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">Email Address</label>
+                <input type="email" class="form-control" id="email" required>
+            </div>
 
-        <div class="mb-3">
-            <label for="password" class="form-label">Password</label>
-            <input type="password" class="form-control" id="password" required>
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="password" required>
+            </div>
         </div>
 
         <hr>
@@ -148,15 +151,32 @@
     function toggleFields() {
         const selectedRole = document.getElementById('role').value;
         const studentInputs = document.querySelectorAll('.student-name-input');
+        const accountFields = document.getElementById('accountFields');
 
-        if (selectedRole === 'rider') {
+        if (selectedRole === 'rider' || selectedRole === 'tempRider') {
             riderFields.classList.remove('d-none');
             // Make student inputs required only when the role is rider
-            studentInputs.forEach(input => input.required = true);
+                studentInputs.forEach(input => input.required = true);
+            // For a normal rider require account fields; for tempRider hide them
+            if (selectedRole === 'rider') {
+                if (accountFields) accountFields.style.display = '';
+                const uname = document.getElementById('username'); if (uname) uname.required = true;
+                const mail = document.getElementById('email'); if (mail) mail.required = true;
+                const pass = document.getElementById('password'); if (pass) pass.required = true;
+            } else {
+                if (accountFields) accountFields.style.display = 'none';
+                const uname = document.getElementById('username'); if (uname) uname.required = false;
+                const mail = document.getElementById('email'); if (mail) mail.required = false;
+                const pass = document.getElementById('password'); if (pass) pass.required = false;
+            }
         } else {
             riderFields.classList.add('d-none');
             // Remove the required attribute for other roles to prevent validation errors
             studentInputs.forEach(input => input.required = false);
+            if (accountFields) accountFields.style.display = '';
+            const uname = document.getElementById('username'); if (uname) uname.required = true;
+            const mail = document.getElementById('email'); if (mail) mail.required = true;
+            const pass = document.getElementById('password'); if (pass) pass.required = true;
         }
     }
 
@@ -187,9 +207,9 @@
         e.preventDefault();
 
         const role = document.getElementById('role').value;
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-        const email = document.getElementById('email').value;
+        const username = document.getElementById('username') ? document.getElementById('username').value : '';
+        const password = document.getElementById('password') ? document.getElementById('password').value : '';
+        const email = document.getElementById('email') ? document.getElementById('email').value : '';
         
         let students = [];
 
@@ -218,8 +238,8 @@
             parentName: document.getElementById('parentName').value // Collect Full Name for all roles
         };
 
-        // Add fields specific to the 'rider' role
-        if (role === 'rider') {
+        // Add fields specific to the 'rider' role or tempRider roster entry
+        if (role === 'rider' || role === 'tempRider') {
             userData.phoneNumber = document.getElementById('phoneNumber').value;
             userData.address = document.getElementById('address').value;
             userData.students = students;
@@ -229,11 +249,21 @@
         statusMessage.classList.add('d-none'); // Hide previous message
 
         try {
-            const response = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(userData)
-            });
+            let response;
+            if (role === 'tempRider') {
+                // Create a roster-only TempRider entry (no account)
+                response = await fetch('/api/temp-riders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parentName: userData.parentName, phoneNumber: userData.phoneNumber, address: userData.address, students: userData.students })
+                });
+            } else {
+                response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(userData)
+                });
+            }
 
             const result = await response.json();
 
