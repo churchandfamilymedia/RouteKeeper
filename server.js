@@ -75,6 +75,11 @@ transporter.verify((err, success) => {
     }
 });
 
+// Utility: escape text for safe use in RegExp construction
+function escapeRegExp(string) {
+    if (typeof string !== 'string') return '';
+    return string.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&');
+}
 
 // -----------------------------------------------------
 // 2. MONGOOSE MODELS
@@ -382,57 +387,15 @@ app.get('/api/invites/:token', async (req, res) => {
         });
 
         if (!invite) {
-            return res.status(404).json({ message: 'This invite link is invalid or has expired.' });
-        }
-
-        res.status(200).json({ email: invite.email, role: invite.role });
-    } catch (error) {
-        console.error('Error verifying invite token:', error);
-        res.status(500).json({ message: 'Server error.' });
-    }
-});
-
-/**
- * POST /api/signup-from-invite
- * Creates a new rider account from a valid invite.
- */
-app.post('/api/signup-from-invite', async (req, res) => {
-    const { token, parentName, username, password, address } = req.body;
-
-    try {
-        const invite = await Invite.findOne({
-            token: token,
-            isUsed: false,
-            expiresAt: { $gt: new Date() }
-        });
-
-        if (!invite) {
             return res.status(400).json({ message: 'This invite link is invalid or has expired.' });
         }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({
-            username,
-            email: invite.email,
-            password: hashedPassword,
-            role: invite.role || 'rider',
-            parentName: parentName,
-            address: invite.role === 'rider' ? address : undefined,
-            passwordHistory: [hashedPassword]
-        });
-        await newUser.save();
-    console.log(`Created user from invite: ${newUser.email} role=${newUser.role} id=${newUser._id}`);
+        // Return the invite details needed by the client sign-up page
+        return res.status(200).json({ email: invite.email, role: invite.role || 'rider' });
 
-        invite.isUsed = true;
-        await invite.save();
-
-        res.status(201).json({ message: 'Account created successfully! You will be redirected to log in.' });
     } catch (error) {
-        if (error.code === 11000) {
-            return res.status(400).json({ message: 'Username or Email already exists.' });
-        }
-        console.error('Error during sign-up from invite:', error);
-        res.status(500).json({ message: 'Error creating account.' });
+        console.error('Error verifying invite token:', error);
+        return res.status(500).json({ message: 'Server error while verifying invite.' });
     }
 });
 
@@ -975,21 +938,42 @@ app.post('/api/calendar/nonop', authenticateToken, authorize(['admin', 'secretar
         // Upsert non-operation for this date and ensure it has a groupId so announcements are dedupable
         let existing = await NonOperation.findOne({ date: d });
         let groupId;
+
         if (existing) {
             existing.occasion = occasion || existing.occasion;
+            // Ensure the entry is active when marking as non-operational
+            existing.isActive = true;
             if (!existing.groupId) existing.groupId = crypto.randomBytes(8).toString('hex');
             groupId = existing.groupId;
             await existing.save();
         } else {
             groupId = crypto.randomBytes(8).toString('hex');
-            await NonOperation.create({ date: d, occasion: occasion || '', createdBy: req.user._id, groupId });
+            await NonOperation.create({ date: d, occasion: occasion || '', createdBy: req.user._id, groupId, isActive: true });
         }
 
-        // Create a single global message to notify riders (include gid token to avoid duplicates)
-    const formatted = d.toLocaleDateString();
-    const content = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '');
-    const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, groupId, timestamp: new Date(), isRead: false });
-        await announcement.save();
+        // Create a single global message to notify riders, but avoid duplicates
+        const formatted = d.toLocaleDateString();
+        const suspensionContent = `Service Suspension: Bus will NOT run on ${formatted}` + (occasion ? ` — ${occasion}` : '');
+
+        // Remove any prior 'Service Update' (will run) messages for this date
+        try {
+            await Message.deleteMany({
+                conversationId: 'global',
+                $or: [
+                    { groupId: groupId },
+                    { content: new RegExp(`^Service Update: Bus WILL run on .*${escapeRegExp(formatted)}.*$`) }
+                ]
+            });
+        } catch (delErr) {
+            console.error('Error deleting conflicting Service Update announcements:', delErr);
+        }
+
+        // Only create suspension announcement if one does not already exist for this groupId or date
+        const existsMsg = await Message.exists({ conversationId: 'global', $or: [{ groupId }, { content: new RegExp(`^Service Suspension: Bus will NOT run on .*${escapeRegExp(formatted)}.*$`) }] });
+        if (!existsMsg) {
+            const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionContent, groupId, timestamp: new Date(), isRead: false });
+            await announcement.save();
+        }
 
         res.status(200).json({ message: 'Date marked as non-operational.' });
     } catch (error) {
@@ -1025,20 +1009,36 @@ app.post('/api/calendar/nonop/bulk', authenticateToken, authorize(['admin', 'sec
         const groupId = crypto.randomBytes(8).toString('hex');
         const ops = [];
         for (const dt of datesToCreate) {
-            // upsert: avoid duplicates
-            ops.push({ updateOne: { filter: { date: dt }, update: { $set: { date: dt, occasion: occasion || '', groupId, createdBy: req.user._id } }, upsert: true } });
+            // upsert: set isActive true so re-marking will re-enable
+            ops.push({ updateOne: { filter: { date: dt }, update: { $set: { date: dt, occasion: occasion || '', groupId, createdBy: req.user._id, isActive: true } }, upsert: true } });
         }
 
         if (ops.length > 0) {
             await NonOperation.bulkWrite(ops);
         }
 
-        // Single announcement for the span (include groupId token)
+        // Single announcement for the span (dedupe and remove conflicting 'will run' messages)
         const fmtStart = start.toLocaleDateString();
         const fmtEnd = end.toLocaleDateString();
-    const content = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '');
-    const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content, groupId, timestamp: new Date(), isRead: false });
-        await announcement.save();
+        const suspensionSpanContent = `Service Suspension: Bus will NOT run from ${fmtStart} through ${fmtEnd}` + (occasion ? ` — ${occasion}` : '');
+
+        try {
+            await Message.deleteMany({
+                conversationId: 'global',
+                $or: [
+                    { groupId },
+                    { content: new RegExp(`^Service Update: Bus WILL run on .*${escapeRegExp(fmtStart)}.*|${escapeRegExp(fmtEnd)}.*$`) }
+                ]
+            });
+        } catch (delErr) {
+            console.error('Error deleting conflicting Service Update announcements for bulk:', delErr);
+        }
+
+        const existsBulk = await Message.exists({ conversationId: 'global', $or: [{ groupId }, { content: new RegExp(`Service Suspension: Bus will NOT run from .*${escapeRegExp(fmtStart)}.*${escapeRegExp(fmtEnd)}.*`) }] });
+        if (!existsBulk) {
+            const announcement = new Message({ conversationId: 'global', senderId: req.user._id, senderName: req.user.parentName || req.user.username, content: suspensionSpanContent, groupId, timestamp: new Date(), isRead: false });
+            await announcement.save();
+        }
 
         res.status(200).json({ message: `Marked ${datesToCreate.length} Sundays as non-operational.` });
     } catch (error) {
